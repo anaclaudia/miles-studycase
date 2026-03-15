@@ -1,0 +1,27 @@
+# This file describes the network interfaces available on your system
+# and how to activate them. For more information, see interfaces(5)
+
+# Include files from /etc/network/interfaces.d:
+source /etc/network/interfaces.d/*
+
+auto lo
+iface lo inet loopback
+
+# Physical NIC — keeps the public IP
+auto eth0
+iface eth0 inet static
+    address 178.104.36.126/32
+    gateway 172.31.1.1
+    pointopoint 172.31.1.1
+    dns-nameservers 185.12.64.1 185.12.64.2
+
+# NAT bridge — VMs live on a private subnet, NAT'd through the host
+auto vmbr0
+iface vmbr0 inet static
+    address 10.10.10.1/24
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+    post-up   echo 1 > /proc/sys/net/ipv4/ip_forward
+    post-up   iptables -t nat -A POSTROUTING -s 10.10.10.0/24 -o eth0 -j MASQUERADE
+    post-down iptables -t nat -D POSTROUTING -s 10.10.10.0/24 -o eth0 -j MASQUERADE
