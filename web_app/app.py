@@ -1,7 +1,9 @@
 import os
-import random
 import psycopg2
+from dotenv import load_dotenv
 from flask import Flask, jsonify
+
+load_dotenv()  # loads variables from .env into os.environ
 
 app = Flask(__name__)
 
