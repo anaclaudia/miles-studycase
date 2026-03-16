@@ -6,7 +6,6 @@ After=network.target postgresql.service
 User=www-data
 Group=www-data
 WorkingDirectory=/app/miles-studycase
-#EnvironmentFile=/app/miles-studycase/.env
 ExecStartPre=/app/miles-studycase/venv/bin/python -c "import app; app.init_db()"
 ExecStart=/app/miles-studycase/venv/bin/gunicorn -c /app/miles-studycase/gunicorn.conf.py app:app
 ExecReload=/bin/kill -s HUP $MAINPID
