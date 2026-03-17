@@ -23,15 +23,18 @@ jobs:
         run: pip install build twine
 
       - name: Set package version
+        working-directory: web_app
         run: |
           VERSION=$(date -u +"%Y.%m.%d.%H%M")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          sed -i "s/^version = .*/version = \"$VERSION\"/" ../web_app/pyproject.toml
+          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
 
       - name: Build wheel + sdist
+        working-directory: web_app
         run: python -m build
 
       - name: Publish to GitHub Packages
+        working-directory: web_app
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
