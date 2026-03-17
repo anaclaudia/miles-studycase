@@ -55,7 +55,7 @@ jobs:
           echo "${{ secrets.PROXMOX_JUMP_SSH_KEY }}" > ~/.ssh/jump_key
           echo "${{ secrets.LXC_DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/jump_key ~/.ssh/deploy_key
-          ssh-keyscan -p 22 ${{ secrets.PROXMOX_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -p 2245 ${{ secrets.PROXMOX_HOST }} >> ~/.ssh/known_hosts
           echo "Host proxmox-jump" >> ~/.ssh/config
           echo "  HostName ${{ secrets.PROXMOX_HOST }}" >> ~/.ssh/config
           echo "  User gh-jump" >> ~/.ssh/config
