@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "miles-challenge"
+version = "0.0.0"          # overwritten at build time by the workflow
+description = "Miles DevOps Case Study web app"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.0.0",
+    "gunicorn>=21.2.0",
+    "psycopg2-binary>=2.9.9",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+miles-challenge-initdb = "miles_challenge.app:init_db"
+
+[tool.setuptools.packages.find]
+where = ["src"]
