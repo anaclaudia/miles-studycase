@@ -37,8 +37,7 @@ jobs:
         working-directory: web_app
         env:
           TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-          TWINE_REPOSITORY_URL: https://nuget.pkg.github.com/${{ github.repository_owner }}/
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: twine upload dist/*
 
   # ── 2. Deploy: SSH through Proxmox jump host → LXC ─────────────────────────
@@ -81,7 +80,6 @@ jobs:
         run: |
           ssh lxc-target << 'ENDSSH'
             /app/venv/bin/pip install \
-              --index-url https://deploy:${{ secrets.GITHUB_TOKEN }}@nuget.pkg.github.com/${{ github.repository_owner }}/simple/ \
               --upgrade miles-challenge \
             && sudo systemctl restart miles-challenge
           ENDSSH
