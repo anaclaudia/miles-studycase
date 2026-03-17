@@ -39,7 +39,7 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           TWINE_REPOSITORY_URL: https://nuget.pkg.github.com/${{ github.repository_owner }}/
-        run: twine upload --skip-existing dist/*
+        run: twine upload dist/*
 
   # ── 2. Deploy: SSH through Proxmox jump host → LXC ─────────────────────────
   deploy:
