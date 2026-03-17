@@ -51,30 +51,22 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          # Key used to authenticate against the Proxmox jump user
           echo "${{ secrets.PROXMOX_JUMP_SSH_KEY }}" > ~/.ssh/jump_key
-          # Key used to authenticate against the deploy user inside the LXC
           echo "${{ secrets.LXC_DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/jump_key ~/.ssh/deploy_key
-
-          # Trust the Proxmox host fingerprint (avoids interactive prompt)
           ssh-keyscan -p 22 ${{ secrets.PROXMOX_HOST }} >> ~/.ssh/known_hosts
-
-          # SSH config: route LXC connections through the Proxmox jump host
-          cat >> ~/.ssh/config <<EOF
-          Host proxmox-jump
-            HostName ${{ secrets.PROXMOX_HOST }}
-            User gh-jump
-            IdentityFile ~/.ssh/jump_key
-            StrictHostKeyChecking yes
-
-          Host lxc-target
-            HostName ${{ secrets.LXC_IP }}
-            User deploy
-            IdentityFile ~/.ssh/deploy_key
-            ProxyJump proxmox-jump
-            StrictHostKeyChecking no
-          EOF
+          echo "Host proxmox-jump" >> ~/.ssh/config
+          echo "  HostName ${{ secrets.PROXMOX_HOST }}" >> ~/.ssh/config
+          echo "  User gh-jump" >> ~/.ssh/config
+          echo "  IdentityFile ~/.ssh/jump_key" >> ~/.ssh/config
+          echo "  StrictHostKeyChecking yes" >> ~/.ssh/config
+          echo "Host lxc-target" >> ~/.ssh/config
+          echo "  HostName ${{ secrets.LXC_IP }}" >> ~/.ssh/config
+          echo "  User deploy" >> ~/.ssh/config
+          echo "  IdentityFile ~/.ssh/deploy_key" >> ~/.ssh/config
+          echo "  ProxyJump proxmox-jump" >> ~/.ssh/config
+          echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+          chmod 600 ~/.ssh/config
 
       - name: Deploy to LXC via ProxyJump
         run: |
