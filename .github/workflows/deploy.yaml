@@ -75,5 +75,5 @@ jobs:
           ssh -T lxc-target << 'ENDSSH'
             /app/venv/bin/pip install \
               --upgrade miles-challenge \
-            && sudo systemctl restart miles-challenge
+            && sudo systemctl restart webapp.service
           ENDSSH
