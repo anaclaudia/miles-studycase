@@ -59,6 +59,7 @@ jobs:
           echo "Host proxmox-jump" >> ~/.ssh/config
           echo "  HostName ${{ secrets.PROXMOX_HOST }}" >> ~/.ssh/config
           echo "  User gh-jump" >> ~/.ssh/config
+          echo "  Port 2245" >> ~/.ssh/config
           echo "  IdentityFile ~/.ssh/jump_key" >> ~/.ssh/config
           echo "  StrictHostKeyChecking yes" >> ~/.ssh/config
           echo "Host lxc-target" >> ~/.ssh/config
