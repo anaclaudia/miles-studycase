@@ -26,7 +26,7 @@ jobs:
         run: |
           VERSION=$(date -u +"%Y.%m.%d.%H%M")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+          sed -i "s/^version = .*/version = \"$VERSION\"/" ../web_app/pyproject.toml
 
       - name: Build wheel + sdist
         run: python -m build
