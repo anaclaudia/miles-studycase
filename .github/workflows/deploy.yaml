@@ -18,6 +18,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      
+      - name: Create .env file
+        working-directory: web_app
+        run: | 
+          cat << EOF > .env
+          DB_HOST=localhost
+          DB_PORT=5432
+          DB_NAME=${{ secrets.DB_NAME }}
+          DB_USER=${{ secrets.DB_USER }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          EOF
 
       - name: Install build tools
         run: pip install build twine
