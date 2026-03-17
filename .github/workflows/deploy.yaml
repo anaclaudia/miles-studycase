@@ -49,6 +49,7 @@ jobs:
       # Write both SSH keys to the runner's agent so ProxyJump works
       - name: Set up SSH keys
         run: |
+          set -x
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           echo "${{ secrets.PROXMOX_JUMP_SSH_KEY }}" > ~/.ssh/jump_key
