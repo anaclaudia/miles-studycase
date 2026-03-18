@@ -1,10 +1,11 @@
 import os
 import psycopg2
+import importlib.metadata
 from dotenv import load_dotenv
 from flask import Flask, jsonify
 
 # Load .env if present (local dev), fall back to real environment variables
-load_dotenv("/app/.env", override=False)
+load_dotenv("/app/miles-studycase/web_app/.env", override=False)
 
 app = Flask(__name__)
 
@@ -73,6 +74,11 @@ def healthcheck():
         return jsonify(status="ok", database="reachable"), 200
     except Exception as e:
         return jsonify(status="error", database="unreachable", detail=str(e)), 503
+
+@app.route("/version")
+def version():
+    v = importlib.metadata.version("miles-challenge")
+    return jsonify(version=v), 200
 
 # --- Entry point ---
 
