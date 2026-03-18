@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-miles-challenge-initdb = "miles_challenge.app:init_db"
+miles-challenge-initdb = "app.app:init_db"
 
 [tool.setuptools.packages.find]
 where = ["src"]

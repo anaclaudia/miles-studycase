@@ -1,14 +1,14 @@
 [Unit]
-Description=Miles DevOps Case Study — Gunicorn
+Description=Miles DevOps Case Study Gunicorn
 After=network.target postgresql.service
 
 [Service]
 User=www-data
 Group=www-data
 WorkingDirectory=/app/miles-studycase/web_app
-EnvironmentFile=/app/.env
-ExecStartPre=/app/miles-studycase/web_app/venv/bin/miles-challenge-initdb
-ExecStart=/app/miles-studycase/web_app/venv/bin/gunicorn -c /app/gunicorn.conf.py miles_challenge.app:app
+EnvironmentFile=/app/miles-studycase/web_app/.env
+ExecStartPre=/app/miles-studycase/web_app/venv/bin/python -c "from app import init_db; init_db()"
+ExecStart=/app/miles-studycase/web_app/venv/bin/gunicorn -c /app/miles-studycase/web_app/gunicorn.conf.py app:app
 ExecReload=/bin/kill -s HUP $MAINPID
 Restart=on-failure
 RestartSec=5s
