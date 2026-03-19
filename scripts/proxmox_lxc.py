@@ -2,8 +2,8 @@
 """
 Proxmox LXC lifecycle manager.
 Usage:
-  proxmox_lxc.py create  --vmid 200 --ip 10.0.0.200
-  proxmox_lxc.py destroy --vmid 100
+  proxmox_lxc.py create  --vmid 200 --ip 10.10.10.50
+  proxmox_lxc.py destroy --vmid 200
   proxmox_lxc.py list
 """
 import argparse
@@ -16,16 +16,16 @@ import urllib.error
 import ssl
 
 # ── Config from environment ──────────────────────────────────────────────────
-PROXMOX_URL      = os.environ["PROXMOX_URL"].strip()
-PROXMOX_NODE     = os.environ.get("PROXMOX_NODE", "pve").strip()
-PROXMOX_USER     = os.environ["PROXMOX_USER"].strip()        # e.g. root@pam
-PROXMOX_TOKEN_ID = os.environ["PROXMOX_TOKEN_ID"].strip()    # e.g. github-actions
-PROXMOX_API_TOKEN= os.environ["PROXMOX_API_TOKEN"].strip()   # the UUID value
-TEMPLATE_NAME    = os.environ.get("PROXMOX_TEMPLATE", "miles-challenge-base")
-BRIDGE           = os.environ.get("PROXMOX_BRIDGE", "vmbr0")
-STORAGE          = os.environ.get("PROXMOX_STORAGE", "local")
-GW               = os.environ.get("LXC_GATEWAY", "10.0.0.1")
-DEPLOY_PUBKEY    = os.environ["LXC_DEPLOY_PUBLIC_KEY"]
+PROXMOX_URL       = os.environ["PROXMOX_URL"].strip()
+PROXMOX_NODE      = os.environ.get("PROXMOX_NODE", "pve").strip()
+PROXMOX_USER      = os.environ["PROXMOX_USER"].strip()
+PROXMOX_TOKEN_ID  = os.environ["PROXMOX_TOKEN_ID"].strip()
+PROXMOX_API_TOKEN = os.environ["PROXMOX_API_TOKEN"].strip()
+TEMPLATE_NAME     = os.environ.get("PROXMOX_TEMPLATE", "miles-challenge-base").strip()
+BRIDGE            = os.environ.get("PROXMOX_BRIDGE", "vmbr0").strip()
+STORAGE           = os.environ.get("PROXMOX_STORAGE", "local").strip()
+GW                = os.environ.get("LXC_GATEWAY", "10.10.10.1").strip()
+DEPLOY_PUBKEY     = os.environ["LXC_DEPLOY_PUBLIC_KEY"].strip()
 
 ctx = ssl.create_default_context()
 ctx.check_hostname = False
@@ -51,12 +51,14 @@ class ProxmoxAPI:
             with urllib.request.urlopen(req, context=ctx, timeout=30) as r:
                 return json.loads(r.read())
         except urllib.error.HTTPError as e:
-            print(f"HTTP {e.code}: {e.read().decode()}", file=sys.stderr)
+            body = e.read().decode()
+            print(f"HTTP {e.code}: {body}", file=sys.stderr)
             raise
 
-    def put(self, path, payload):    return self._req("PUT",    path, payload)
-    def post(self, path, payload):   return self._req("POST",   path, payload)
-    def delete(self, path):          return self._req("DELETE", path)
+    def get(self, path):           return self._req("GET",    path)
+    def post(self, path, payload): return self._req("POST",   path, payload)
+    def put(self, path, payload):  return self._req("PUT",    path, payload)
+    def delete(self, path):        return self._req("DELETE", path)
 
     def wait_for_task(self, upid, timeout=120):
         node     = upid.split(":")[1]
@@ -75,7 +77,7 @@ class ProxmoxAPI:
         raise TimeoutError(f"Task {upid} did not complete within {timeout}s")
 
     def find_template_vmid(self):
-        """Resolve template name to VMID, with fallback to any Ubuntu template."""
+        """Resolve template name to VMID."""
         nodes = self.get("/nodes")["data"]
         all_templates = []
         for node in nodes:
@@ -84,19 +86,17 @@ class ProxmoxAPI:
                 if lxc.get("template") == 1:
                     all_templates.append(lxc)
 
-        # Try exact name match first
         for t in all_templates:
             if t.get("name") == TEMPLATE_NAME:
                 print(f"Found template '{TEMPLATE_NAME}' — VMID {t['vmid']}")
                 return t["vmid"]
 
-        # List available templates to help with debugging
         names = [t.get("name", "unnamed") for t in all_templates]
         print(f"Available templates: {names}", file=sys.stderr)
         raise ValueError(
             f"Template '{TEMPLATE_NAME}' not found. "
-            f"Available templates: {names}. "
-            f"Set PROXMOX_TEMPLATE env var to one of these names."
+            f"Available: {names}. "
+            f"Set PROXMOX_TEMPLATE to one of these names."
         )
 
     # ── Public actions ────────────────────────────────────────────────────────
@@ -114,7 +114,7 @@ class ProxmoxAPI:
         })["data"]
         self.wait_for_task(upid)
 
-        # Configure networking on the new container
+        # Configure networking
         self.put(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/config", {
             "net0": f"name=eth0,bridge={BRIDGE},ip={ip}/24,gw={GW},type=veth",
         })
@@ -153,7 +153,7 @@ class ProxmoxAPI:
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def main():
-    p = argparse.ArgumentParser()
+    p   = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="cmd", required=True)
 
     c = sub.add_parser("create")
