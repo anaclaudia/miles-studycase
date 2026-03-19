@@ -173,23 +173,23 @@ jobs:
         run: |
           ansible-playbook \
             -i /tmp/inventory_new.yml \
-            -i ansible/group_vars \
             ansible/playbooks/lxc-configure.yml \
             -e "db_user=$DB_USER" \
             -e "db_password=$DB_PASSWORD" \
-            -e "deploy_public_key=$LXC_DEPLOY_PUBLIC_KEY"
+            -e "deploy_public_key=$LXC_DEPLOY_PUBLIC_KEY" \
+            -e "@ansible/group_vars/all.yml"
 
       - name: Write Proxmox inventory
         run: |
           PROXMOX_HOST="${{ secrets.PROXMOX_HOST }}"
           cat > /tmp/inventory_proxmox.yml << EOF
           all:
-           hosts:
-             proxmox_host:
-               ansible_host: ${PROXMOX_HOST}
-               ansible_port: 2245
-               ansible_user: root
-               ansible_ssh_private_key_file: ~/.ssh/jump_key
+            hosts:
+              proxmox_host:
+                ansible_host: ${PROXMOX_HOST}
+                ansible_port: 2245
+                ansible_user: root
+                ansible_ssh_private_key_file: ~/.ssh/jump_key
           EOF
 
       - name: Run Ansible proxmox-nginx playbook
@@ -197,6 +197,7 @@ jobs:
           ansible-playbook \
             -i /tmp/inventory_proxmox.yml \
             ansible/playbooks/proxmox-nginx.yml \
+            -e "@ansible/group_vars/all.yml" \
             -e "lxc_ip=${{ needs.provision.outputs.new_ip }}"
 
   # ── 4. Smoke test the new LXC ─────────────────────────────────────────────
