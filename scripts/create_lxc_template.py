@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Creates a base LXC template on Proxmox by:
-  1. Downloading the Ubuntu 22.04 CT template (if not present)
+  1. Downloading the Ubuntu 24.04 CT template (if not present)
   2. Creating an LXC container from it
   3. Provisioning it (packages, venv, hardening)
   4. Converting it to a template
@@ -17,19 +17,16 @@ import urllib.request
 import urllib.error
 import ssl
 
-PROXMOX_URL      = os.environ["PROXMOX_URL"]
-PROXMOX_NODE     = os.environ.get("PROXMOX_NODE", "pve")
-PROXMOX_USER     = os.environ["PROXMOX_USER"]
 PROXMOX_URL       = os.environ["PROXMOX_URL"].strip()
 PROXMOX_NODE      = os.environ.get("PROXMOX_NODE", "pve").strip()
-PROXMOX_USER      = os.environ["PROXMOX_USER"].strip()        # e.g. root@pam
-PROXMOX_TOKEN_ID  = os.environ["PROXMOX_TOKEN_ID"].strip()    # e.g. github-actions
-PROXMOX_API_TOKEN = os.environ["PROXMOX_API_TOKEN"].strip()   # the UUID value
-PROXMOX_STORAGE  = os.environ.get("PROXMOX_STORAGE", "local")
-TEMPLATE_VMID    = int(os.environ.get("TEMPLATE_VMID", "9000"))
-TEMPLATE_NAME    = os.environ.get("PROXMOX_TEMPLATE", "miles-challenge-base")
-CT_TEMPLATE      = "ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
-BRIDGE           = os.environ.get("PROXMOX_BRIDGE", "vmbr0")
+PROXMOX_USER      = os.environ["PROXMOX_USER"].strip()
+PROXMOX_TOKEN_ID  = os.environ["PROXMOX_TOKEN_ID"].strip()
+PROXMOX_API_TOKEN = os.environ["PROXMOX_API_TOKEN"].strip()
+PROXMOX_STORAGE   = os.environ.get("PROXMOX_STORAGE", "local").strip()
+TEMPLATE_VMID     = int(os.environ.get("TEMPLATE_VMID", "9000"))
+TEMPLATE_NAME     = os.environ.get("PROXMOX_TEMPLATE", "miles-challenge-base").strip()
+CT_TEMPLATE       = "ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
+BRIDGE            = os.environ.get("PROXMOX_BRIDGE", "vmbr0").strip()
 
 ctx = ssl.create_default_context()
 ctx.check_hostname = False
@@ -38,9 +35,17 @@ ctx.verify_mode = ssl.CERT_NONE
 
 class ProxmoxAPI:
     def __init__(self):
-        self.base    = PROXMOX_URL.rstrip("/")
+        self.base = PROXMOX_URL.rstrip("/")
+        auth = f"PVEAPIToken={PROXMOX_USER}!{PROXMOX_TOKEN_ID}={PROXMOX_API_TOKEN}"
+        masked = PROXMOX_API_TOKEN[:6] + "..." + PROXMOX_API_TOKEN[-4:]
+        print(f"[debug] PROXMOX_URL      = {self.base}")
+        print(f"[debug] PROXMOX_USER     = {PROXMOX_USER!r}")
+        print(f"[debug] PROXMOX_TOKEN_ID = {PROXMOX_TOKEN_ID!r}")
+        print(f"[debug] PROXMOX_NODE     = {PROXMOX_NODE!r}")
+        print(f"[debug] API_TOKEN        = {masked}")
+        print(f"[debug] Auth header      = PVEAPIToken={PROXMOX_USER}!{PROXMOX_TOKEN_ID}=<uuid>")
         self.headers = {
-            "Authorization": f"PVEAPIToken={PROXMOX_USER}!{PROXMOX_TOKEN_ID}={PROXMOX_API_TOKEN}",
+            "Authorization": auth,
             "Content-Type":  "application/json",
         }
 
@@ -54,7 +59,8 @@ class ProxmoxAPI:
                 return json.loads(r.read())
         except urllib.error.HTTPError as e:
             body = e.read().decode()
-            print(f"HTTP {e.code} {method} {path}: {body}", file=sys.stderr)
+            print(f"[debug] HTTP {e.code} {method} {url}", file=sys.stderr)
+            print(f"[debug] Response body: {body}", file=sys.stderr)
             raise
 
     def get(self, path):           return self._req("GET",    path)
@@ -62,9 +68,9 @@ class ProxmoxAPI:
     def delete(self, path):        return self._req("DELETE", path)
 
     def wait_for_task(self, upid, timeout=300):
-        node = upid.split(":")[1]
+        node    = upid.split(":")[1]
         encoded = upid.replace(":", "%3A").replace("/", "%2F")
-        path = f"/nodes/{node}/tasks/{encoded}/status"
+        path    = f"/nodes/{node}/tasks/{encoded}/status"
         deadline = time.time() + timeout
         while time.time() < deadline:
             status = self.get(path)["data"]["status"]
@@ -90,7 +96,7 @@ class ProxmoxAPI:
     def download_ct_template(self):
         """Download Ubuntu CT template to Proxmox storage if not present."""
         print(f"Checking for CT template {CT_TEMPLATE}...")
-        content = self.get(
+        content  = self.get(
             f"/nodes/{PROXMOX_NODE}/storage/{PROXMOX_STORAGE}/content"
         )["data"]
         existing = [c["volid"] for c in content if CT_TEMPLATE in c.get("volid", "")]
@@ -114,7 +120,7 @@ class ProxmoxAPI:
 
         # Delete existing container with same VMID if present
         try:
-            existing = self.get(f"/nodes/{PROXMOX_NODE}/lxc/{TEMPLATE_VMID}/status/current")
+            self.get(f"/nodes/{PROXMOX_NODE}/lxc/{TEMPLATE_VMID}/status/current")
             print(f"  VMID {TEMPLATE_VMID} exists — removing it first")
             try:
                 self.post(f"/nodes/{PROXMOX_NODE}/lxc/{TEMPLATE_VMID}/status/stop", {})
@@ -147,7 +153,7 @@ class ProxmoxAPI:
             f"/nodes/{PROXMOX_NODE}/lxc/{TEMPLATE_VMID}/status/start", {}
         )["data"]
         self.wait_for_task(upid)
-        time.sleep(5)  # give network a moment
+        time.sleep(5)
 
         # Provision via pct exec
         print("  Provisioning packages and virtualenv...")
