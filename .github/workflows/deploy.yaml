@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 env:
-  NEW_VMID:  ${{ github.run_number + 200 }}   # unique VMID per run
+  NEW_VMID:  "${{ github.run_number + 200 }}"   # unique VMID per run
   NEW_IP:    "10.10.10.${{ github.run_number % 200 + 50 }}"  # unique IP per run
 
 jobs:
