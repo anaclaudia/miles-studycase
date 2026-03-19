@@ -10,7 +10,10 @@ packer {
 # ── Variables ────────────────────────────────────────────────────────────────
 variable "proxmox_url"          { type = string }
 variable "proxmox_username"     { type = string }
-variable "proxmox_password"     { type = string sensitive = true }
+variable "proxmox_password"     {
+  type      = string
+  sensitive = true
+}
 variable "proxmox_node"         { type = string default = "pve" }
 variable "proxmox_storage"      { type = string default = "local" }
 variable "template_name"        { type = string default = "miles-challenge-base" }

@@ -23,7 +23,7 @@ PROXMOX_PASSWORD = os.environ["PROXMOX_PASSWORD"]
 TEMPLATE_NAME    = os.environ.get("PROXMOX_TEMPLATE", "miles-challenge-base")
 BRIDGE           = os.environ.get("PROXMOX_BRIDGE", "vmbr0")
 STORAGE          = os.environ.get("PROXMOX_STORAGE", "local")
-GW               = os.environ.get("LXC_GATEWAY", "10.0.0.1")
+GW               = os.environ.get("LXC_GATEWAY", "10.10.10.1")
 DEPLOY_PUBKEY    = os.environ["LXC_DEPLOY_PUBLIC_KEY"]
 
 ctx = ssl.create_default_context()
