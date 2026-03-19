@@ -54,7 +54,7 @@ class ProxmoxAPI:
             print(f"HTTP {e.code}: {e.read().decode()}", file=sys.stderr)
             raise
 
-    def get(self, path):             return self._req("GET",    path)
+    def put(self, path, payload):    return self._req("PUT",    path, payload)
     def post(self, path, payload):   return self._req("POST",   path, payload)
     def delete(self, path):          return self._req("DELETE", path)
 
@@ -115,12 +115,12 @@ class ProxmoxAPI:
         self.wait_for_task(upid)
 
         # Configure networking on the new container
-        self.post(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/config", {
+        self.put(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/config", {
             "net0": f"name=eth0,bridge={BRIDGE},ip={ip}/24,gw={GW},type=veth",
         })
 
         # Inject deploy SSH public key
-        self.post(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/config", {
+        self.put(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/config", {
             "ssh-public-keys": DEPLOY_PUBKEY,
         })
 
