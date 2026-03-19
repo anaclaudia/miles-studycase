@@ -4,44 +4,43 @@ on:
   push:
     branches: [main]
     paths:
-      - 'packer/**'
-  workflow_dispatch:    # allows manual trigger from the GitHub UI
+      - 'scripts/create_lxc_template.py'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Rebuild template even if it already exists'
+        required: false
+        default: 'false'
 
 jobs:
-  packer:
+  build-template:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Packer
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up SSH jump key
         run: |
-          wget -O- https://apt.releases.hashicorp.com/gpg \
-            | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
-            https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
-            | sudo tee /etc/apt/sources.list.d/hashicorp.list
-          sudo apt-get update && sudo apt-get install -y packer
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "${{ secrets.PROXMOX_JUMP_SSH_KEY }}" > ~/.ssh/jump_key
+          chmod 600 ~/.ssh/jump_key
+          ssh-keyscan -p 2245 ${{ secrets.PROXMOX_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Packer init
-        working-directory: packer
-        run: packer init lxc-base.pkr.hcl
-
-      - name: Packer validate
-        working-directory: packer
+      - name: Build LXC base template
         env:
-          PKR_VAR_proxmox_url:      ${{ secrets.PROXMOX_URL }}
-          PKR_VAR_proxmox_username: ${{ secrets.PROXMOX_USER }}
-          PKR_VAR_proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
-          PKR_VAR_proxmox_node:     ${{ vars.PROXMOX_NODE }}
-        run: packer validate lxc-base.pkr.hcl
-
-      - name: Packer build
-        working-directory: packer
-        env:
-          PKR_VAR_proxmox_url:      ${{ secrets.PROXMOX_URL }}
-          PKR_VAR_proxmox_username: ${{ secrets.PROXMOX_USER }}
-          PKR_VAR_proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
-          PKR_VAR_proxmox_node:     ${{ vars.PROXMOX_NODE }}
-          PKR_VAR_proxmox_storage:  ${{ vars.PROXMOX_STORAGE }}
-        run: packer build lxc-base.pkr.hcl
+          PROXMOX_URL:        ${{ secrets.PROXMOX_URL }}
+          PROXMOX_NODE:       ${{ vars.PROXMOX_NODE }}
+          PROXMOX_USER:       ${{ secrets.PROXMOX_USER }}
+          PROXMOX_API_TOKEN:  ${{ secrets.PROXMOX_API_TOKEN }}
+          PROXMOX_STORAGE:    ${{ vars.PROXMOX_STORAGE }}
+          PROXMOX_BRIDGE:     ${{ vars.PROXMOX_BRIDGE }}
+          PROXMOX_TEMPLATE:   miles-challenge-base
+          TEMPLATE_VMID:      "9000"
+        run: |
+          ARGS=""
+          [ "${{ github.event.inputs.force }}" = "true" ] && ARGS="--force"
+          python3 scripts/create_lxc_template.py $ARGS
