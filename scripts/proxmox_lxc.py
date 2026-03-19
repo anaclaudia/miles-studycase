@@ -110,7 +110,7 @@ class ProxmoxAPI:
 
         # Configure networking on the new container
         self.post(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/config", {
-            "net0": f"name=eth0,bridge={BRIDGE},ip={ip}/24,gw={GW}",
+            "net0": f"name=eth0,bridge={BRIDGE},ip={ip}/24,gw={GW},type=veth",
         })
 
         # Inject deploy SSH public key
