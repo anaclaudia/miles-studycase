@@ -40,7 +40,7 @@ class ProxmoxAPI:
     def __init__(self):
         self.base    = PROXMOX_URL.rstrip("/")
         self.headers = {
-            "Authorization": f"PVEAPIToken={PROXMOX_USER}={PROXMOX_API_TOKEN}",
+            "Authorization": f"PVEAPIToken={PROXMOX_USER}!{PROXMOX_TOKEN_ID}={PROXMOX_API_TOKEN}",
             "Content-Type":  "application/json",
         }
 
