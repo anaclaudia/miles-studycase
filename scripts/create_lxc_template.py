@@ -141,7 +141,7 @@ class ProxmoxAPI:
             "rootfs":       f"{PROXMOX_STORAGE}:8",
             "memory":       512,
             "cores":        1,
-            "net0":         f"name=eth0,bridge={BRIDGE},ip=dhcp",
+            "net0":         f"name=eth0,bridge={BRIDGE},ip=dhcp,type=veth",
             "unprivileged": 1,
             "start":        0,
         })["data"]
