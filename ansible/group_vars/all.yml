@@ -1,0 +1,23 @@
+---
+# Network
+lxc_ip: "10.10.10.15"
+proxmox_pub_iface: "eth0"
+
+# App
+app_dir: "/app"
+app_domain: "miles-challenge.athenalabs.work"
+app_service: "webapp"
+certbot_email: "ana@anaclaudia.net.br"
+
+# Database
+db_name: "webapp_db"
+db_user: "{{ lookup('env', 'DB_USER') }}"
+db_password: "{{ lookup('env', 'DB_PASSWORD') }}"
+
+# Deploy user (LXC)
+deploy_user: "deploy"
+deploy_public_key: "{{ lookup('env', 'LXC_DEPLOY_PUBLIC_KEY') }}"
+
+# Jump user (Proxmox)
+jump_user: "gh-jump"
+jump_public_key: "{{ lookup('env', 'PROXMOX_JUMP_PUBLIC_KEY') }}"

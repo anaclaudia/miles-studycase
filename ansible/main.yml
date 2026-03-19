@@ -1,0 +1,4 @@
+---
+- import_playbook: playbooks/proxmox-jump-user.yml
+- import_playbook: playbooks/proxmox-nginx.yml
+- import_playbook: playbooks/lxc-setup.yml

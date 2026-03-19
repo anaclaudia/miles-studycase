@@ -1,0 +1,91 @@
+---
+- name: Configure Nginx reverse proxy and TLS on Proxmox host
+  hosts: proxmox
+  become: true
+
+  tasks:
+    # ── Packages ──────────────────────────────────────────────────────────────
+    - name: Install Nginx and Certbot
+      ansible.builtin.apt:
+        name:
+          - nginx
+          - certbot
+          - python3-certbot-nginx
+        state: present
+        update_cache: true
+
+    - name: Ensure Nginx is started and enabled
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: true
+
+    # ── HTTP-only vhost (needed by Certbot's HTTP-01 challenge) ───────────────
+    - name: Deploy HTTP-only Nginx config (pre-certbot)
+      ansible.builtin.template:
+        src: templates/proxmox-nginx-http.j2
+        dest: "/etc/nginx/sites-available/{{ app_domain }}"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload nginx
+
+    - name: Enable site
+      ansible.builtin.file:
+        src: "/etc/nginx/sites-available/{{ app_domain }}"
+        dest: "/etc/nginx/sites-enabled/{{ app_domain }}"
+        state: link
+      notify: Reload nginx
+
+    - name: Remove default Nginx site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Reload nginx
+
+    - name: Flush handlers to reload Nginx before running Certbot
+      ansible.builtin.meta: flush_handlers
+
+    # ── TLS certificate ───────────────────────────────────────────────────────
+    - name: Obtain TLS certificate via Certbot
+      ansible.builtin.command:
+        cmd: >
+          certbot --nginx
+          -d {{ app_domain }}
+          --non-interactive
+          --agree-tos
+          -m {{ certbot_email }}
+        creates: "/etc/letsencrypt/live/{{ app_domain }}/fullchain.pem"
+
+    # ── Full HTTPS vhost (replaces the HTTP-only config post-certbot) ─────────
+    - name: Deploy full HTTPS Nginx config
+      ansible.builtin.template:
+        src: templates/proxmox-nginx-https.j2
+        dest: "/etc/nginx/sites-available/{{ app_domain }}"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload nginx
+
+    # ── Certbot auto-renewal ──────────────────────────────────────────────────
+    - name: Ensure Certbot renewal timer is enabled
+      ansible.builtin.service:
+        name: certbot.timer
+        state: started
+        enabled: true
+
+    - name: Deploy Nginx reload hook for Certbot renewal
+      ansible.builtin.copy:
+        dest: /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+        content: |
+          #!/usr/bin/env bash
+          systemctl reload nginx
+        owner: root
+        group: root
+        mode: "0755"
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded

@@ -1,0 +1,195 @@
+---
+- name: Configure LXC container — app, database, nginx, deploy user
+  hosts: lxc
+  become: true
+
+  tasks:
+    # ── System packages ───────────────────────────────────────────────────────
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - python3
+          - python3-venv
+          - python3-pip
+          - nginx
+          - certbot
+          - python3-certbot-nginx
+          - postgresql
+          - postgresql-contrib
+          - acl                  # needed for ansible to work with non-root users
+        state: present
+        update_cache: true
+
+    # ── PostgreSQL ────────────────────────────────────────────────────────────
+    - name: Ensure PostgreSQL is started and enabled
+      ansible.builtin.service:
+        name: postgresql
+        state: started
+        enabled: true
+
+    - name: Create database user
+      become_user: postgres
+      community.postgresql.postgresql_user:
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+        state: present
+
+    - name: Create application database
+      become_user: postgres
+      community.postgresql.postgresql_db:
+        name: "{{ db_name }}"
+        owner: "{{ db_user }}"
+        state: present
+
+    # ── App directory and virtualenv ──────────────────────────────────────────
+    - name: Create app directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: "0755"
+
+    - name: Create virtualenv
+      ansible.builtin.command:
+        cmd: python3 -m venv {{ app_dir }}/venv
+        creates: "{{ app_dir }}/venv"
+
+    - name: Install miles-challenge from PyPI
+      ansible.builtin.pip:
+        name: miles-challenge
+        virtualenv: "{{ app_dir }}/venv"
+        state: latest
+
+    - name: Create gunicorn log directory
+      ansible.builtin.file:
+        path: /var/log/gunicorn
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: "0755"
+
+    - name: Deploy gunicorn config
+      ansible.builtin.copy:
+        src: ../web_app/gunicorn.conf.py
+        dest: "{{ app_dir }}/gunicorn.conf.py"
+        owner: www-data
+        group: www-data
+        mode: "0644"
+
+    - name: Deploy .env file
+      ansible.builtin.template:
+        src: templates/env.j2
+        dest: "{{ app_dir }}/.env"
+        owner: www-data
+        group: www-data
+        mode: "0600"
+
+    - name: Set ownership of app directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        recurse: true
+        owner: www-data
+        group: www-data
+
+    # ── systemd service ───────────────────────────────────────────────────────
+    - name: Deploy systemd service file
+      ansible.builtin.copy:
+        src: ../web_app/webapp.service
+        dest: "/etc/systemd/system/{{ app_service }}.service"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload systemd
+
+    - name: Enable and start app service
+      ansible.builtin.service:
+        name: "{{ app_service }}"
+        state: started
+        enabled: true
+
+    # ── Nginx ─────────────────────────────────────────────────────────────────
+    - name: Deploy nginx config (HTTP only — pre-certbot)
+      ansible.builtin.copy:
+        src: "../web_app/{{ app_domain }}.conf"
+        dest: "/etc/nginx/sites-available/{{ app_domain }}"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload nginx
+
+    - name: Enable nginx site
+      ansible.builtin.file:
+        src: "/etc/nginx/sites-available/{{ app_domain }}"
+        dest: "/etc/nginx/sites-enabled/{{ app_domain }}"
+        state: link
+
+    - name: Remove default nginx site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Reload nginx
+
+    - name: Obtain TLS certificate via Certbot
+      ansible.builtin.command:
+        cmd: >
+          certbot --nginx
+          -d {{ app_domain }}
+          --non-interactive
+          --agree-tos
+          -m {{ certbot_email }}
+        creates: "/etc/letsencrypt/live/{{ app_domain }}/fullchain.pem"
+
+    # ── Deploy user ───────────────────────────────────────────────────────────
+    - name: Create deploy user
+      ansible.builtin.user:
+        name: "{{ deploy_user }}"
+        system: true
+        create_home: true
+        shell: /bin/bash
+        state: present
+
+    - name: Create .ssh directory for deploy user
+      ansible.builtin.file:
+        path: "/home/{{ deploy_user }}/.ssh"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0700"
+
+    - name: Add GitHub Actions public key to deploy user
+      ansible.builtin.lineinfile:
+        path: "/home/{{ deploy_user }}/.ssh/authorized_keys"
+        line: "{{ deploy_public_key }}"
+        create: true
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0600"
+
+    - name: Allow deploy user to restart app service via sudo
+      ansible.builtin.copy:
+        dest: "/etc/sudoers.d/{{ deploy_user }}-{{ app_service }}"
+        content: "{{ deploy_user }} ALL=(root) NOPASSWD: /bin/systemctl restart {{ app_service }}\n"
+        owner: root
+        group: root
+        mode: "0440"
+        validate: visudo -cf %s
+
+    - name: Allow deploy user to write to venv
+      ansible.builtin.file:
+        path: "{{ app_dir }}/venv"
+        state: directory
+        recurse: true
+        group: "{{ deploy_user }}"
+        mode: "g+w"
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Reload nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded

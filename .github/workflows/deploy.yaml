@@ -69,15 +69,6 @@ jobs:
           echo "  StrictHostKeyChecking no" >> ~/.ssh/config
           chmod 600 ~/.ssh/config
 
-      - name: Debug SSH connectivity
-        run: |
-          echo "=== jump key fingerprint ==="
-          ssh-keygen -lf ~/.ssh/jump_key
-          echo "=== deploy key fingerprint ==="
-          ssh-keygen -lf ~/.ssh/deploy_key
-          echo "=== test jump host connection ==="
-          ssh -v -i ~/.ssh/jump_key -o StrictHostKeyChecking=no gh-jump@${{ secrets.PROXMOX_HOST }} echo "jump ok" || true
-
       - name: Deploy to LXC via ProxyJump
         run: |
           ssh -T lxc-target "cat > /app/miles-studycase/web_app/.env" << EOF
