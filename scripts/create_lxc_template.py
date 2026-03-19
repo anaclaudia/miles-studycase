@@ -138,7 +138,7 @@ class ProxmoxAPI:
             "vmid":         TEMPLATE_VMID,
             "hostname":     TEMPLATE_NAME,
             "ostemplate":   f"{PROXMOX_STORAGE}:vztmpl/{CT_TEMPLATE}",
-            "storage":      PROXMOX_STORAGE,
+            "rootfs":       f"{PROXMOX_STORAGE}:8",
             "memory":       512,
             "cores":        1,
             "net0":         f"name=eth0,bridge={BRIDGE},ip=dhcp",
