@@ -41,10 +41,12 @@ class ProxmoxAPI:
         }
 
     def _req(self, method, path, payload=None):
-        url  = f"{self.base}/api2/json{path}"
-        data = json.dumps(payload).encode() if payload else None
-        req  = urllib.request.Request(url, data=data, method=method,
-                                      headers=self.headers)
+        url     = f"{self.base}/api2/json{path}"
+        data    = json.dumps(payload).encode() if payload is not None else None
+        headers = dict(self.headers)
+        if data is None:
+            headers.pop("Content-Type", None)
+        req = urllib.request.Request(url, data=data, method=method, headers=headers)
         try:
             with urllib.request.urlopen(req, context=ctx, timeout=30) as r:
                 return json.loads(r.read())
@@ -123,7 +125,7 @@ class ProxmoxAPI:
         })
 
         # Start
-        upid = self.post(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/status/start", {})["data"]
+        upid = self.post(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/status/start", None)["data"]
         self.wait_for_task(upid)
         print(f"LXC {vmid} started at {ip}")
         return ip
@@ -132,7 +134,7 @@ class ProxmoxAPI:
         """Stop and destroy an LXC container."""
         print(f"Stopping LXC {vmid}")
         try:
-            upid = self.post(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/status/stop", {})["data"]
+            upid = self.post(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/status/stop", None)["data"]
             self.wait_for_task(upid)
         except Exception:
             pass  # already stopped

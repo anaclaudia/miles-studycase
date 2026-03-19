@@ -51,10 +51,12 @@ class ProxmoxAPI:
         }
 
     def _req(self, method, path, payload=None):
-        url  = f"{self.base}/api2/json{path}"
-        data = json.dumps(payload).encode() if payload else None
-        req  = urllib.request.Request(url, data=data, method=method,
-                                      headers=self.headers)
+        url     = f"{self.base}/api2/json{path}"
+        data    = json.dumps(payload).encode() if payload is not None else None
+        headers = dict(self.headers)
+        if data is None:
+            headers.pop("Content-Type", None)
+        req = urllib.request.Request(url, data=data, method=method, headers=headers)
         try:
             with urllib.request.urlopen(req, context=ctx, timeout=30) as r:
                 return json.loads(r.read())
@@ -155,7 +157,7 @@ class ProxmoxAPI:
         # Start it for provisioning
         print("  Starting container for provisioning...")
         upid = self.post(
-            f"/nodes/{PROXMOX_NODE}/lxc/{TEMPLATE_VMID}/status/start", {}
+            f"/nodes/{PROXMOX_NODE}/lxc/{TEMPLATE_VMID}/status/start", None
         )["data"]
         self.wait_for_task(upid)
         time.sleep(5)
@@ -190,13 +192,12 @@ class ProxmoxAPI:
         # Stop and convert to template
         print("  Stopping container...")
         upid = self.post(
-            f"/nodes/{PROXMOX_NODE}/lxc/{TEMPLATE_VMID}/status/stop", {}
+            f"/nodes/{PROXMOX_NODE}/lxc/{TEMPLATE_VMID}/status/stop", None
         )["data"]
         self.wait_for_task(upid)
 
         print("  Converting to template...")
-        self.post(f"/nodes/{PROXMOX_NODE}/lxc/{TEMPLATE_VMID}/template", {})
-        print(f"✅ Template '{TEMPLATE_NAME}' (VMID {TEMPLATE_VMID}) ready.")
+        self.post(f"/nodes/{PROXMOX_NODE}/lxc/{TEMPLATE_VMID}/template", None)
 
 
 if __name__ == "__main__":
