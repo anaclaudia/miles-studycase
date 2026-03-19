@@ -52,16 +52,7 @@ jobs:
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: twine upload dist/*
 
-  # ── 2. Bake base LXC template with Packer (only if packer files changed) ──
-  packer:
-    runs-on: ubuntu-latest
-    needs: publish
-    if: always() && needs.publish.result == 'success'
-
-    steps:
-      - uses: actions/checkout@v4
-      
-  # ── 3. Provision new LXC via Proxmox API ──────────────────────────────────
+  # ── 2. Provision new LXC via Proxmox API ──────────────────────────────────
   provision:
     runs-on: ubuntu-latest
     needs: publish
@@ -121,7 +112,6 @@ jobs:
           LXC_GATEWAY:            ${{ vars.LXC_GATEWAY }}
           LXC_DEPLOY_PUBLIC_KEY:  ${{ secrets.LXC_DEPLOY_PUBLIC_KEY }}
         run: |
-          pip install -q requests
           python3 scripts/proxmox_lxc.py create \
             --vmid ${{ steps.compute.outputs.new_vmid }} \
             --ip   ${{ steps.compute.outputs.new_ip }}
@@ -140,7 +130,7 @@ jobs:
             sleep 5
           done
 
-  # ── 4. Configure new LXC with Ansible ─────────────────────────────────────
+  # ── 3. Configure new LXC with Ansible ─────────────────────────────────────
   configure:
     runs-on: ubuntu-latest
     needs: provision
@@ -186,7 +176,7 @@ jobs:
             -i /tmp/inventory_new.yml \
             web_app/ansible/playbooks/lxc-configure.yml
 
-  # ── 5. Smoke test the new LXC ─────────────────────────────────────────────
+  # ── 4. Smoke test the new LXC ─────────────────────────────────────────────
   smoke_test:
     runs-on: ubuntu-latest
     needs: [provision, configure]
@@ -201,14 +191,12 @@ jobs:
 
       - name: Hit /healthcheck on new LXC via jump host
         run: |
-          # Curl through SSH tunnel to the new LXC's internal IP
           ssh -i ~/.ssh/jump_key \
               -p 2245 \
               -o StrictHostKeyChecking=yes \
               -L 18080:${{ needs.provision.outputs.new_ip }}:80 \
               -N -f \
               gh-jump@${{ secrets.PROXMOX_HOST }}
-
           sleep 2
           RESPONSE=$(curl -sf http://localhost:18080/healthcheck)
           echo "Healthcheck response: $RESPONSE"
@@ -216,12 +204,14 @@ jobs:
             (echo "Smoke test FAILED" && exit 1)
           echo "Smoke test passed"
 
-  # ── 6. Swap Nginx upstream + destroy old LXC ──────────────────────────────
+  # ── 5. Swap Nginx upstream + destroy old LXC ──────────────────────────────
   swap_and_destroy:
     runs-on: ubuntu-latest
     needs: [provision, smoke_test]
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Set up SSH keys
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
@@ -242,10 +232,11 @@ jobs:
       - name: Destroy old LXC
         if: needs.provision.outputs.old_vmid != ''
         env:
-          PROXMOX_URL:      ${{ secrets.PROXMOX_URL }}
-          PROXMOX_NODE:     ${{ vars.PROXMOX_NODE }}
-          PROXMOX_USER:     ${{ secrets.PROXMOX_USER }}
-          PROXMOX_PASSWORD: ${{ secrets.PROXMOX_PASSWORD }}
+          PROXMOX_URL:       ${{ secrets.PROXMOX_URL }}
+          PROXMOX_NODE:      ${{ vars.PROXMOX_NODE }}
+          PROXMOX_USER:      ${{ secrets.PROXMOX_USER }}
+          PROXMOX_TOKEN_ID:  ${{ secrets.PROXMOX_TOKEN_ID }}
+          PROXMOX_API_TOKEN: ${{ secrets.PROXMOX_API_TOKEN }}
           LXC_DEPLOY_PUBLIC_KEY: ${{ secrets.LXC_DEPLOY_PUBLIC_KEY }}
         run: |
           python3 scripts/proxmox_lxc.py destroy \
