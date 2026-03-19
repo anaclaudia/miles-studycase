@@ -9,6 +9,7 @@ Usage:
 import argparse
 import json
 import os
+import subprocess
 import sys
 import time
 import urllib.request
@@ -119,14 +120,32 @@ class ProxmoxAPI:
             "net0": f"name=eth0,bridge={BRIDGE},ip={ip}/24,gw={GW},type=veth",
         })
 
-        # Inject deploy SSH public key
-        self.put(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/config", {
-            "ssh-public-keys": DEPLOY_PUBKEY,
-        })
-
         # Start
         upid = self.post(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/status/start", None)["data"]
         self.wait_for_task(upid)
+        time.sleep(5)  # wait for container to fully boot
+
+        # Inject deploy SSH public key via pct exec on the Proxmox host
+        cmds = [
+            f"pct exec {vmid} -- mkdir -p /root/.ssh",
+            f"pct exec {vmid} -- chmod 700 /root/.ssh",
+            f"pct exec {vmid} -- bash -c 'echo \"{DEPLOY_PUBKEY}\" >> /root/.ssh/authorized_keys'",
+            f"pct exec {vmid} -- chmod 600 /root/.ssh/authorized_keys",
+        ]
+        for cmd in cmds:
+            result = subprocess.run(
+                ["ssh", "-i", os.path.expanduser("~/.ssh/jump_key"),
+                 "-p", "2245",
+                 "-o", "StrictHostKeyChecking=no",
+                 f"root@{PROXMOX_URL.split('//')[1].split(':')[0]}",
+                 cmd],
+                capture_output=True, text=True
+            )
+            if result.returncode != 0:
+                print(f"  WARN: {cmd} → {result.stderr.strip()}", file=sys.stderr)
+            else:
+                print(f"  + {cmd}")
+
         print(f"LXC {vmid} started at {ip}")
         return ip
 
