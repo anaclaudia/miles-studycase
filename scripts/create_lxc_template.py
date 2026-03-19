@@ -26,7 +26,7 @@ PROXMOX_URL      = os.environ["PROXMOX_URL"].strip()
 PROXMOX_STORAGE  = os.environ.get("PROXMOX_STORAGE", "local")
 TEMPLATE_VMID    = int(os.environ.get("TEMPLATE_VMID", "9000"))
 TEMPLATE_NAME    = os.environ.get("PROXMOX_TEMPLATE", "miles-challenge-base")
-CT_TEMPLATE      = "ubuntu-22.04-standard_22.04-1_amd64.tar.zst"
+CT_TEMPLATE      = "ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
 BRIDGE           = os.environ.get("PROXMOX_BRIDGE", "vmbr0")
 
 ctx = ssl.create_default_context()
