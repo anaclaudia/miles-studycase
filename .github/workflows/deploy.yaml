@@ -4,10 +4,6 @@ on:
   push:
     branches: [main]
 
-env:
-  NEW_VMID:  "${{ github.run_number + 200 }}"   # unique VMID per run
-  NEW_IP:    "10.10.10.${{ github.run_number % 200 + 50 }}"  # unique IP per run
-
 jobs:
   # ── 1. Build and publish package to PyPI ──────────────────────────────────
   publish:
@@ -101,12 +97,21 @@ jobs:
     runs-on: ubuntu-latest
     needs: publish
     outputs:
-      new_vmid: ${{ env.NEW_VMID }}
-      new_ip:   ${{ env.NEW_IP }}
+      new_vmid: ${{ steps.compute.outputs.new_vmid }}
+      new_ip:   ${{ steps.compute.outputs.new_ip }}
       old_vmid: ${{ steps.get_old.outputs.old_vmid }}
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Compute VMID and IP
+        id: compute
+        run: |
+          NEW_VMID=$(( ${{ github.run_number }} + 200 ))
+          NEW_IP="10.0.0.$(( ${{ github.run_number }} % 200 + 50 ))"
+          echo "new_vmid=$NEW_VMID" >> $GITHUB_OUTPUT
+          echo "new_ip=$NEW_IP"     >> $GITHUB_OUTPUT
+          echo "New VMID: $NEW_VMID, New IP: $NEW_IP"
 
       - name: Set up SSH jump host
         run: |
@@ -138,8 +143,8 @@ jobs:
         run: |
           pip install -q requests
           python3 scripts/proxmox_lxc.py create \
-            --vmid ${{ env.NEW_VMID }} \
-            --ip   ${{ env.NEW_IP }}
+            --vmid ${{ steps.compute.outputs.new_vmid }} \
+            --ip   ${{ steps.compute.outputs.new_ip }}
 
       - name: Wait for SSH to become available on new LXC
         run: |
@@ -150,7 +155,7 @@ jobs:
                 -o ConnectTimeout=5 \
                 -i ~/.ssh/deploy_key \
                 -J gh-jump@${{ secrets.PROXMOX_HOST }}:2245 \
-                deploy@${{ env.NEW_IP }} echo "ssh ok" && break
+                deploy@${{ steps.compute.outputs.new_ip }} echo "ssh ok" && break
             echo "Attempt $i — retrying in 5s..."
             sleep 5
           done
