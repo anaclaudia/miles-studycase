@@ -144,7 +144,8 @@ jobs:
           PROXMOX_URL:            ${{ secrets.PROXMOX_URL }}
           PROXMOX_NODE:           ${{ vars.PROXMOX_NODE }}
           PROXMOX_USER:           ${{ secrets.PROXMOX_USER }}
-          PROXMOX_PASSWORD:       ${{ secrets.PROXMOX_PASSWORD }}
+          PROXMOX_TOKEN_ID:       ${{ secrets.PROXMOX_TOKEN_ID }}
+          PROXMOX_API_TOKEN:      ${{ secrets.PROXMOX_API_TOKEN }}
           PROXMOX_TEMPLATE:       miles-challenge-base
           PROXMOX_STORAGE:        ${{ vars.PROXMOX_STORAGE }}
           LXC_GATEWAY:            ${{ vars.LXC_GATEWAY }}

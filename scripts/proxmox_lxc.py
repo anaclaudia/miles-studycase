@@ -16,14 +16,15 @@ import urllib.error
 import ssl
 
 # ── Config from environment ──────────────────────────────────────────────────
-PROXMOX_URL      = os.environ["PROXMOX_URL"]        # https://host:8006
-PROXMOX_NODE     = os.environ.get("PROXMOX_NODE", "pve")
-PROXMOX_USER     = os.environ["PROXMOX_USER"]        # e.g. root@pam
-PROXMOX_PASSWORD = os.environ["PROXMOX_PASSWORD"]
+PROXMOX_URL      = os.environ["PROXMOX_URL"].strip()
+PROXMOX_NODE     = os.environ.get("PROXMOX_NODE", "pve").strip()
+PROXMOX_USER     = os.environ["PROXMOX_USER"].strip()        # e.g. root@pam
+PROXMOX_TOKEN_ID = os.environ["PROXMOX_TOKEN_ID"].strip()    # e.g. github-actions
+PROXMOX_API_TOKEN= os.environ["PROXMOX_API_TOKEN"].strip()   # the UUID value
 TEMPLATE_NAME    = os.environ.get("PROXMOX_TEMPLATE", "miles-challenge-base")
 BRIDGE           = os.environ.get("PROXMOX_BRIDGE", "vmbr0")
 STORAGE          = os.environ.get("PROXMOX_STORAGE", "local")
-GW               = os.environ.get("LXC_GATEWAY", "10.10.10.1")
+GW               = os.environ.get("LXC_GATEWAY", "10.0.0.1")
 DEPLOY_PUBKEY    = os.environ["LXC_DEPLOY_PUBLIC_KEY"]
 
 ctx = ssl.create_default_context()
@@ -33,34 +34,17 @@ ctx.verify_mode = ssl.CERT_NONE  # replace with cert verification in production
 
 class ProxmoxAPI:
     def __init__(self):
-        self.base   = PROXMOX_URL.rstrip("/")
-        self.ticket = None
-        self.csrf   = None
-        self._auth()
-
-    def _auth(self):
-        data = f"username={PROXMOX_USER}&password={PROXMOX_PASSWORD}".encode()
-        req  = urllib.request.Request(
-            f"{self.base}/api2/json/access/ticket",
-            data=data, method="POST"
-        )
-        with urllib.request.urlopen(req, context=ctx) as r:
-            body = json.loads(r.read())
-        self.ticket = body["data"]["ticket"]
-        self.csrf   = body["data"]["CSRFPreventionToken"]
-
-    def _headers(self):
-        return {
-            "Cookie":               f"PVEAuthCookie={self.ticket}",
-            "CSRFPreventionToken":  self.csrf,
-            "Content-Type":         "application/json",
+        self.base    = PROXMOX_URL.rstrip("/")
+        self.headers = {
+            "Authorization": f"PVEAPIToken={PROXMOX_USER}!{PROXMOX_TOKEN_ID}={PROXMOX_API_TOKEN}",
+            "Content-Type":  "application/json",
         }
 
     def _req(self, method, path, payload=None):
         url  = f"{self.base}/api2/json{path}"
         data = json.dumps(payload).encode() if payload else None
         req  = urllib.request.Request(url, data=data, method=method,
-                                      headers=self._headers())
+                                      headers=self.headers)
         try:
             with urllib.request.urlopen(req, context=ctx) as r:
                 return json.loads(r.read())
