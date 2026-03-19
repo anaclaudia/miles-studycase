@@ -30,6 +30,12 @@ jobs:
           chmod 600 ~/.ssh/jump_key
           ssh-keyscan -p 2245 ${{ secrets.PROXMOX_HOST }} >> ~/.ssh/known_hosts
 
+      - name: Test Proxmox API connectivity
+        run: |
+          curl -v --insecure \
+            -H "Authorization: PVEAPIToken=${{ secrets.PROXMOX_USER }}!${{ secrets.PROXMOX_TOKEN_ID }}=${{ secrets.PROXMOX_API_TOKEN }}" \
+            "${{ secrets.PROXMOX_URL }}/api2/json/version"
+
       - name: Build LXC base template
         env:
           PROXMOX_URL:        ${{ secrets.PROXMOX_URL }}
