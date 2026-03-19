@@ -153,15 +153,17 @@ jobs:
 
       - name: Write dynamic inventory for new LXC
         run: |
+          NEW_IP="${{ needs.provision.outputs.new_ip }}"
+          PROXMOX_HOST="${{ secrets.PROXMOX_HOST }}"
           cat > /tmp/inventory_new.yml << EOF
-all:
-  hosts:
-    lxc_new:
-      ansible_host: ${{ needs.provision.outputs.new_ip }}
-      ansible_user: root
-      ansible_ssh_private_key_file: ~/.ssh/deploy_key
-      ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o ProxyCommand='ssh -i ~/.ssh/jump_key -p 2245 -W %h:%p -o StrictHostKeyChecking=no gh-jump@${{ secrets.PROXMOX_HOST }}'"
-EOF
+          all:
+            hosts:
+              lxc_new:
+                ansible_host: ${NEW_IP}
+                ansible_user: root
+                ansible_ssh_private_key_file: ~/.ssh/deploy_key
+                ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o ProxyCommand='ssh -i ~/.ssh/jump_key -p 2245 -W %h:%p -o StrictHostKeyChecking=no gh-jump@${PROXMOX_HOST}'"
+          EOF
 
       - name: Run Ansible configure playbook
         env:
@@ -179,15 +181,16 @@ EOF
 
       - name: Write Proxmox inventory
         run: |
+          PROXMOX_HOST="${{ secrets.PROXMOX_HOST }}"
           cat > /tmp/inventory_proxmox.yml << EOF
-all:
-  hosts:
-    proxmox_host:
-      ansible_host: ${{ secrets.PROXMOX_HOST }}
-      ansible_port: 2245
-      ansible_user: root
-      ansible_ssh_private_key_file: ~/.ssh/jump_key
-EOF
+          all:
+           hosts:
+             proxmox_host:
+               ansible_host: ${PROXMOX_HOST}
+               ansible_port: 2245
+               ansible_user: root
+               ansible_ssh_private_key_file: ~/.ssh/jump_key
+          EOF
 
       - name: Run Ansible proxmox-nginx playbook
         run: |
