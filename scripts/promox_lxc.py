@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""
+Proxmox LXC lifecycle manager.
+Usage:
+  proxmox_lxc.py create  --vmid 200 --ip 10.10.10.200
+  proxmox_lxc.py destroy --vmid 100
+  proxmox_lxc.py list
+"""
+import argparse
+import json
+import os
+import sys
+import time
+import urllib.request
+import urllib.error
+import ssl
+
+# ── Config from environment ──────────────────────────────────────────────────
+PROXMOX_URL      = os.environ["PROXMOX_URL"]        # https://host:8006
+PROXMOX_NODE     = os.environ.get("PROXMOX_NODE", "pve")
+PROXMOX_USER     = os.environ["PROXMOX_USER"]        # e.g. root@pam
+PROXMOX_PASSWORD = os.environ["PROXMOX_PASSWORD"]
+TEMPLATE_NAME    = os.environ.get("PROXMOX_TEMPLATE", "miles-challenge-base")
+BRIDGE           = os.environ.get("PROXMOX_BRIDGE", "vmbr0")
+STORAGE          = os.environ.get("PROXMOX_STORAGE", "local")
+GW               = os.environ.get("LXC_GATEWAY", "10.0.0.1")
+DEPLOY_PUBKEY    = os.environ["LXC_DEPLOY_PUBLIC_KEY"]
+
+ctx = ssl.create_default_context()
+ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE  # replace with cert verification in production
+
+
+class ProxmoxAPI:
+    def __init__(self):
+        self.base   = PROXMOX_URL.rstrip("/")
+        self.ticket = None
+        self.csrf   = None
+        self._auth()
+
+    def _auth(self):
+        data = f"username={PROXMOX_USER}&password={PROXMOX_PASSWORD}".encode()
+        req  = urllib.request.Request(
+            f"{self.base}/api2/json/access/ticket",
+            data=data, method="POST"
+        )
+        with urllib.request.urlopen(req, context=ctx) as r:
+            body = json.loads(r.read())
+        self.ticket = body["data"]["ticket"]
+        self.csrf   = body["data"]["CSRFPreventionToken"]
+
+    def _headers(self):
+        return {
+            "Cookie":               f"PVEAuthCookie={self.ticket}",
+            "CSRFPreventionToken":  self.csrf,
+            "Content-Type":         "application/json",
+        }
+
+    def _req(self, method, path, payload=None):
+        url  = f"{self.base}/api2/json{path}"
+        data = json.dumps(payload).encode() if payload else None
+        req  = urllib.request.Request(url, data=data, method=method,
+                                      headers=self._headers())
+        try:
+            with urllib.request.urlopen(req, context=ctx) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            print(f"HTTP {e.code}: {e.read().decode()}", file=sys.stderr)
+            raise
+
+    def get(self, path):             return self._req("GET",    path)
+    def post(self, path, payload):   return self._req("POST",   path, payload)
+    def delete(self, path):          return self._req("DELETE", path)
+
+    def wait_for_task(self, upid, timeout=120):
+        """Poll a Proxmox task UPID until it finishes."""
+        node = upid.split(":")[1]
+        path = f"/nodes/{node}/tasks/{urllib.request.quote(upid, safe='')}/status"
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            status = self.get(path)["data"]["status"]
+            if status == "stopped":
+                return
+            time.sleep(3)
+        raise TimeoutError(f"Task {upid} did not complete within {timeout}s")
+
+    def find_template_vmid(self):
+        """Resolve template name to VMID."""
+        nodes = self.get("/nodes")["data"]
+        for node in nodes:
+            lxcs = self.get(f"/nodes/{node['node']}/lxc")["data"]
+            for lxc in lxcs:
+                if lxc.get("name") == TEMPLATE_NAME and lxc.get("template") == 1:
+                    return lxc["vmid"]
+        raise ValueError(f"Template '{TEMPLATE_NAME}' not found on any node")
+
+    # ── Public actions ────────────────────────────────────────────────────────
+
+    def create(self, vmid: int, ip: str):
+        """Clone the base template into a new LXC and start it."""
+        template_vmid = self.find_template_vmid()
+        print(f"Cloning template {template_vmid} → VMID {vmid} ({ip})")
+
+        upid = self.post(f"/nodes/{PROXMOX_NODE}/lxc/{template_vmid}/clone", {
+            "newid":    vmid,
+            "full":     1,
+            "hostname": f"miles-challenge-{vmid}",
+            "storage":  STORAGE,
+        })["data"]
+        self.wait_for_task(upid)
+
+        # Configure networking on the new container
+        self.post(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/config", {
+            "net0": f"name=eth0,bridge={BRIDGE},ip={ip}/24,gw={GW}",
+        })
+
+        # Inject deploy SSH public key
+        self.post(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/config", {
+            "ssh-public-keys": DEPLOY_PUBKEY,
+        })
+
+        # Start
+        upid = self.post(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/status/start", {})["data"]
+        self.wait_for_task(upid)
+        print(f"LXC {vmid} started at {ip}")
+        return ip
+
+    def destroy(self, vmid: int):
+        """Stop and destroy an LXC container."""
+        print(f"Stopping LXC {vmid}")
+        try:
+            upid = self.post(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/status/stop", {})["data"]
+            self.wait_for_task(upid)
+        except Exception:
+            pass  # already stopped
+
+        print(f"Destroying LXC {vmid}")
+        upid = self.delete(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}")["data"]
+        self.wait_for_task(upid)
+        print(f"LXC {vmid} destroyed")
+
+    def list_containers(self):
+        containers = self.get(f"/nodes/{PROXMOX_NODE}/lxc")["data"]
+        for c in containers:
+            print(f"{c['vmid']:>6}  {c.get('name',''):<30}  {c['status']}")
+
+
+# ── CLI ───────────────────────────────────────────────────────────────────────
+
+def main():
+    p = argparse.ArgumentParser()
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    c = sub.add_parser("create")
+    c.add_argument("--vmid", type=int, required=True)
+    c.add_argument("--ip",   required=True)
+
+    d = sub.add_parser("destroy")
+    d.add_argument("--vmid", type=int, required=True)
+
+    sub.add_parser("list")
+
+    args = p.parse_args()
+    api  = ProxmoxAPI()
+
+    if args.cmd == "create":
+        api.create(args.vmid, args.ip)
+    elif args.cmd == "destroy":
+        api.destroy(args.vmid)
+    elif args.cmd == "list":
+        api.list_containers()
+
+
+if __name__ == "__main__":
+    main()

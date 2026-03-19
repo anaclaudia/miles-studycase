@@ -1,16 +1,22 @@
-name: Build, Publish & Deploy
+name: Build, Publish & Deploy (immutable LXC)
 
 on:
   push:
     branches: [main]
 
+env:
+  NEW_VMID:  ${{ github.run_number + 200 }}   # unique VMID per run
+  NEW_IP:    "10.10.10.${{ github.run_number % 200 + 50 }}"  # unique IP per run
+
 jobs:
-  # ── 1. Build & push the package to GitHub Packages ──────────────────────────
+  # ── 1. Build and publish package to PyPI ──────────────────────────────────
   publish:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
@@ -23,67 +29,240 @@ jobs:
         run: pip install build twine
 
       - name: Set package version
+        id: version
         working-directory: web_app
         run: |
           VERSION=$(date -u +"%Y.%m.%d.%H%M")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
           sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+
+      - name: Syntax check
+        working-directory: web_app
+        run: python3 -m py_compile src/miles_challenge/app.py && echo "syntax ok"
 
       - name: Build wheel + sdist
         working-directory: web_app
         run: python -m build
 
-      - name: Publish to GitHub Packages
+      - name: Check built artifacts
+        working-directory: web_app
+        run: ls -lh dist/
+
+      - name: Publish to PyPI
         working-directory: web_app
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: twine upload dist/*
 
-  # ── 2. Deploy: SSH through Proxmox jump host → LXC ─────────────────────────
-  deploy:
-    needs: publish
+  # ── 2. Bake base LXC template with Packer (only if packer files changed) ──
+  packer:
     runs-on: ubuntu-latest
+    needs: publish
+    if: |
+      contains(join(github.event.commits.*.modified, ','), 'packer/')
+      || contains(join(github.event.commits.*.added, ','), 'packer/')
 
     steps:
-      # Write both SSH keys to the runner's agent so ProxyJump works
+      - uses: actions/checkout@v4
+
+      - name: Install Packer
+        run: |
+          wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+          sudo apt-get update && sudo apt-get install -y packer
+
+      - name: Packer init
+        working-directory: packer
+        run: packer init lxc-base.pkr.hcl
+
+      - name: Packer validate
+        working-directory: packer
+        env:
+          PKR_VAR_proxmox_url:      ${{ secrets.PROXMOX_URL }}
+          PKR_VAR_proxmox_username: ${{ secrets.PROXMOX_USER }}
+          PKR_VAR_proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
+          PKR_VAR_proxmox_node:     ${{ vars.PROXMOX_NODE }}
+        run: packer validate lxc-base.pkr.hcl
+
+      - name: Packer build — bake new base template
+        working-directory: packer
+        env:
+          PKR_VAR_proxmox_url:      ${{ secrets.PROXMOX_URL }}
+          PKR_VAR_proxmox_username: ${{ secrets.PROXMOX_USER }}
+          PKR_VAR_proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
+          PKR_VAR_proxmox_node:     ${{ vars.PROXMOX_NODE }}
+          PKR_VAR_proxmox_storage:  ${{ vars.PROXMOX_STORAGE }}
+        run: packer build lxc-base.pkr.hcl
+
+  # ── 3. Provision new LXC via Proxmox API ──────────────────────────────────
+  provision:
+    runs-on: ubuntu-latest
+    needs: publish
+    outputs:
+      new_vmid: ${{ env.NEW_VMID }}
+      new_ip:   ${{ env.NEW_IP }}
+      old_vmid: ${{ steps.get_old.outputs.old_vmid }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH jump host
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "${{ secrets.PROXMOX_JUMP_SSH_KEY }}" > ~/.ssh/jump_key
+          chmod 600 ~/.ssh/jump_key
+          ssh-keyscan -p 2245 ${{ secrets.PROXMOX_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Get current (old) LXC VMID
+        id: get_old
+        run: |
+          OLD=$(ssh -i ~/.ssh/jump_key -p 2245 \
+            -o StrictHostKeyChecking=yes \
+            gh-jump@${{ secrets.PROXMOX_HOST }} \
+            "cat /etc/miles-challenge-vmid 2>/dev/null || echo ''")
+          echo "old_vmid=$OLD" >> $GITHUB_OUTPUT
+          echo "Old VMID: $OLD"
+
+      - name: Create new LXC container
+        env:
+          PROXMOX_URL:            ${{ secrets.PROXMOX_URL }}
+          PROXMOX_NODE:           ${{ vars.PROXMOX_NODE }}
+          PROXMOX_USER:           ${{ secrets.PROXMOX_USER }}
+          PROXMOX_PASSWORD:       ${{ secrets.PROXMOX_PASSWORD }}
+          PROXMOX_TEMPLATE:       miles-challenge-base
+          PROXMOX_STORAGE:        ${{ vars.PROXMOX_STORAGE }}
+          LXC_GATEWAY:            ${{ vars.LXC_GATEWAY }}
+          LXC_DEPLOY_PUBLIC_KEY:  ${{ secrets.LXC_DEPLOY_PUBLIC_KEY }}
+        run: |
+          pip install -q requests
+          python3 scripts/proxmox_lxc.py create \
+            --vmid ${{ env.NEW_VMID }} \
+            --ip   ${{ env.NEW_IP }}
+
+      - name: Wait for SSH to become available on new LXC
+        run: |
+          echo "${{ secrets.LXC_DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          for i in $(seq 1 24); do
+            ssh -o StrictHostKeyChecking=no \
+                -o ConnectTimeout=5 \
+                -i ~/.ssh/deploy_key \
+                -J gh-jump@${{ secrets.PROXMOX_HOST }}:2245 \
+                deploy@${{ env.NEW_IP }} echo "ssh ok" && break
+            echo "Attempt $i — retrying in 5s..."
+            sleep 5
+          done
+
+  # ── 4. Configure new LXC with Ansible ─────────────────────────────────────
+  configure:
+    runs-on: ubuntu-latest
+    needs: provision
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: |
+          pip install ansible
+          ansible-galaxy collection install community.postgresql ansible.posix
+
       - name: Set up SSH keys
         run: |
-          set -x
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
           echo "${{ secrets.PROXMOX_JUMP_SSH_KEY }}" > ~/.ssh/jump_key
-          echo "${{ secrets.LXC_DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          echo "${{ secrets.LXC_DEPLOY_SSH_KEY }}"   > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/jump_key ~/.ssh/deploy_key
           ssh-keyscan -p 2245 ${{ secrets.PROXMOX_HOST }} >> ~/.ssh/known_hosts
-          echo "Host proxmox-jump" >> ~/.ssh/config
-          echo "  HostName ${{ secrets.PROXMOX_HOST }}" >> ~/.ssh/config
-          echo "  User gh-jump" >> ~/.ssh/config
-          echo "  Port 2245" >> ~/.ssh/config
-          echo "  IdentityFile ~/.ssh/jump_key" >> ~/.ssh/config
-          echo "  StrictHostKeyChecking yes" >> ~/.ssh/config
-          echo "Host lxc-target" >> ~/.ssh/config
-          echo "  HostName ${{ secrets.LXC_IP }}" >> ~/.ssh/config
-          echo "  User deploy" >> ~/.ssh/config
-          echo "  IdentityFile ~/.ssh/deploy_key" >> ~/.ssh/config
-          echo "  ProxyJump proxmox-jump" >> ~/.ssh/config
-          echo "  StrictHostKeyChecking no" >> ~/.ssh/config
-          chmod 600 ~/.ssh/config
 
-      - name: Deploy to LXC via ProxyJump
+      - name: Write dynamic inventory for new LXC
         run: |
-          ssh -T lxc-target "cat > /app/miles-studycase/web_app/.env" << EOF
-          DB_HOST=localhost
-          DB_PORT=5432
-          DB_NAME=${{ secrets.DB_NAME }}
-          DB_USER=${{ secrets.DB_USER }}
-          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          cat > /tmp/inventory_new.yml <<EOF
+          all:
+            hosts:
+              lxc_new:
+                ansible_host: ${{ needs.provision.outputs.new_ip }}
+                ansible_user: root
+                ansible_ssh_private_key_file: ~/.ssh/deploy_key
+                ansible_ssh_common_args: >-
+                  -o StrictHostKeyChecking=no
+                  -o ProxyJump=gh-jump@${{ secrets.PROXMOX_HOST }}:2245
+                  -i ~/.ssh/jump_key
           EOF
-          ssh -T lxc-target << 'ENDSSH'
-            /app/miles-studycase/web_app/venv/bin/pip install \
-              --upgrade \
-              --force-reinstall \
-              --no-cache-dir \
-              miles-challenge miles-challenge \
-            && sudo systemctl restart miles-challenge
-          ENDSSH
+
+      - name: Run Ansible configure playbook
+        env:
+          DB_USER:               ${{ secrets.DB_USER }}
+          DB_PASSWORD:           ${{ secrets.DB_PASSWORD }}
+          LXC_DEPLOY_PUBLIC_KEY: ${{ secrets.LXC_DEPLOY_PUBLIC_KEY }}
+        run: |
+          ansible-playbook \
+            -i /tmp/inventory_new.yml \
+            web_app/ansible/playbooks/lxc-configure.yml
+
+  # ── 5. Smoke test the new LXC ─────────────────────────────────────────────
+  smoke_test:
+    runs-on: ubuntu-latest
+    needs: [provision, configure]
+
+    steps:
+      - name: Set up SSH jump
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "${{ secrets.PROXMOX_JUMP_SSH_KEY }}" > ~/.ssh/jump_key
+          chmod 600 ~/.ssh/jump_key
+          ssh-keyscan -p 2245 ${{ secrets.PROXMOX_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Hit /healthcheck on new LXC via jump host
+        run: |
+          # Curl through SSH tunnel to the new LXC's internal IP
+          ssh -i ~/.ssh/jump_key \
+              -p 2245 \
+              -o StrictHostKeyChecking=yes \
+              -L 18080:${{ needs.provision.outputs.new_ip }}:80 \
+              -N -f \
+              gh-jump@${{ secrets.PROXMOX_HOST }}
+
+          sleep 2
+          RESPONSE=$(curl -sf http://localhost:18080/healthcheck)
+          echo "Healthcheck response: $RESPONSE"
+          echo "$RESPONSE" | grep -q '"status":"ok"' || \
+            (echo "Smoke test FAILED" && exit 1)
+          echo "Smoke test passed"
+
+  # ── 6. Swap Nginx upstream + destroy old LXC ──────────────────────────────
+  swap_and_destroy:
+    runs-on: ubuntu-latest
+    needs: [provision, smoke_test]
+
+    steps:
+      - name: Set up SSH keys
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "${{ secrets.PROXMOX_JUMP_SSH_KEY }}" > ~/.ssh/jump_key
+          chmod 600 ~/.ssh/jump_key
+          ssh-keyscan -p 2245 ${{ secrets.PROXMOX_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Update Nginx upstream to new LXC IP
+        run: |
+          ssh -i ~/.ssh/jump_key -p 2245 \
+              -o StrictHostKeyChecking=yes \
+              gh-jump@${{ secrets.PROXMOX_HOST }} \
+              "sed -i 's|server [0-9.]*:80;|server ${{ needs.provision.outputs.new_ip }}:80;|' \
+               /etc/nginx/sites-available/${{ vars.APP_DOMAIN }} \
+               && nginx -t \
+               && systemctl reload nginx \
+               && echo ${{ needs.provision.outputs.new_vmid }} > /etc/miles-challenge-vmid"
+
+      - name: Destroy old LXC
+        if: needs.provision.outputs.old_vmid != ''
+        env:
+          PROXMOX_URL:      ${{ secrets.PROXMOX_URL }}
+          PROXMOX_NODE:     ${{ vars.PROXMOX_NODE }}
+          PROXMOX_USER:     ${{ secrets.PROXMOX_USER }}
+          PROXMOX_PASSWORD: ${{ secrets.PROXMOX_PASSWORD }}
+          LXC_DEPLOY_PUBLIC_KEY: ${{ secrets.LXC_DEPLOY_PUBLIC_KEY }}
+        run: |
+          python3 scripts/proxmox_lxc.py destroy \
+            --vmid ${{ needs.provision.outputs.old_vmid }}

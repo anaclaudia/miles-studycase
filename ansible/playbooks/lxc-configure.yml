@@ -69,38 +69,15 @@
         group: www-data
         mode: "0755"
 
-    - name: Deploy gunicorn config
-      ansible.builtin.copy:
-        src: ../web_app/gunicorn.conf.py
-        dest: "{{ app_dir }}/gunicorn.conf.py"
-        owner: www-data
-        group: www-data
-        mode: "0644"
+    - name: Write gunicorn config from package
+      ansible.builtin.shell:
+        cmd: "{{ app_dir }}/venv/bin/miles-challenge-gunicorn-conf > {{ app_dir }}/gunicorn.conf.py"
+      changed_when: true
 
-    - name: Deploy .env file
-      ansible.builtin.template:
-        src: templates/env.j2
-        dest: "{{ app_dir }}/.env"
-        owner: www-data
-        group: www-data
-        mode: "0600"
-
-    - name: Set ownership of app directory
-      ansible.builtin.file:
-        path: "{{ app_dir }}"
-        state: directory
-        recurse: true
-        owner: www-data
-        group: www-data
-
-    # ── systemd service ───────────────────────────────────────────────────────
-    - name: Deploy systemd service file
-      ansible.builtin.copy:
-        src: ../web_app/webapp.service
-        dest: "/etc/systemd/system/{{ app_service }}.service"
-        owner: root
-        group: root
-        mode: "0644"
+    - name: Write systemd service file from package
+      ansible.builtin.shell:
+        cmd: "{{ app_dir }}/venv/bin/miles-challenge-service > /etc/systemd/system/{{ app_service }}.service"
+      changed_when: true
       notify: Reload systemd
 
     - name: Enable and start app service
@@ -167,10 +144,13 @@
         group: "{{ deploy_user }}"
         mode: "0600"
 
-    - name: Allow deploy user to restart app service via sudo
+    - name: Allow deploy user to manage app service via sudo
       ansible.builtin.copy:
         dest: "/etc/sudoers.d/{{ deploy_user }}-{{ app_service }}"
-        content: "{{ deploy_user }} ALL=(root) NOPASSWD: /bin/systemctl restart {{ app_service }}\n"
+        content: |
+          {{ deploy_user }} ALL=(root) NOPASSWD: /bin/systemctl daemon-reload
+          {{ deploy_user }} ALL=(root) NOPASSWD: /bin/systemctl restart {{ app_service }}
+          {{ deploy_user }} ALL=(root) NOPASSWD: /bin/tee /etc/systemd/system/{{ app_service }}.service
         owner: root
         group: root
         mode: "0440"

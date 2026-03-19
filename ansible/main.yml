@@ -1,4 +1,11 @@
 ---
+# First-time Proxmox host setup (run once)
 - import_playbook: playbooks/proxmox-jump-user.yml
 - import_playbook: playbooks/proxmox-nginx.yml
-- import_playbook: playbooks/lxc-setup.yml
+
+# LXC configuration (run by GitHub Actions on each deploy)
+- import_playbook: playbooks/lxc-configure.yml
+
+
+
+
