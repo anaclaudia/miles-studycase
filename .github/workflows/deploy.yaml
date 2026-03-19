@@ -174,7 +174,7 @@ jobs:
         run: |
           ansible-playbook \
             -i /tmp/inventory_new.yml \
-            web_app/ansible/playbooks/lxc-configure.yml
+            ansible/playbooks/lxc-configure.yml
 
   # ── 4. Smoke test the new LXC ─────────────────────────────────────────────
   smoke_test:
