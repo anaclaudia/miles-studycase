@@ -153,18 +153,15 @@ jobs:
 
       - name: Write dynamic inventory for new LXC
         run: |
-          cat > /tmp/inventory_new.yml <<EOF
-          all:
-            hosts:
-              lxc_new:
-                ansible_host: ${{ needs.provision.outputs.new_ip }}
-                ansible_user: root
-                ansible_ssh_private_key_file: ~/.ssh/deploy_key
-                ansible_ssh_common_args: >-
-                  -o StrictHostKeyChecking=no
-                  -o ProxyJump=gh-jump@${{ secrets.PROXMOX_HOST }}:2245
-                  -i ~/.ssh/jump_key
-          EOF
+          cat > /tmp/inventory_new.yml << EOF
+all:
+  hosts:
+    lxc_new:
+      ansible_host: ${{ needs.provision.outputs.new_ip }}
+      ansible_user: root
+      ansible_ssh_private_key_file: ~/.ssh/deploy_key
+      ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o ProxyCommand='ssh -i ~/.ssh/jump_key -p 2245 -W %h:%p -o StrictHostKeyChecking=no gh-jump@${{ secrets.PROXMOX_HOST }}'"
+EOF
 
       - name: Run Ansible configure playbook
         env:
@@ -174,7 +171,30 @@ jobs:
         run: |
           ansible-playbook \
             -i /tmp/inventory_new.yml \
-            ansible/playbooks/lxc-configure.yml
+            -i ansible/group_vars \
+            ansible/playbooks/lxc-configure.yml \
+            -e "db_user=$DB_USER" \
+            -e "db_password=$DB_PASSWORD" \
+            -e "deploy_public_key=$LXC_DEPLOY_PUBLIC_KEY"
+
+      - name: Write Proxmox inventory
+        run: |
+          cat > /tmp/inventory_proxmox.yml << EOF
+all:
+  hosts:
+    proxmox_host:
+      ansible_host: ${{ secrets.PROXMOX_HOST }}
+      ansible_port: 2245
+      ansible_user: root
+      ansible_ssh_private_key_file: ~/.ssh/jump_key
+EOF
+
+      - name: Run Ansible proxmox-nginx playbook
+        run: |
+          ansible-playbook \
+            -i /tmp/inventory_proxmox.yml \
+            ansible/playbooks/proxmox-nginx.yml \
+            -e "lxc_ip=${{ needs.provision.outputs.new_ip }}"
 
   # ── 4. Smoke test the new LXC ─────────────────────────────────────────────
   smoke_test:
@@ -218,16 +238,6 @@ jobs:
           echo "${{ secrets.PROXMOX_JUMP_SSH_KEY }}" > ~/.ssh/jump_key
           chmod 600 ~/.ssh/jump_key
           ssh-keyscan -p 2245 ${{ secrets.PROXMOX_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Update Nginx upstream to new LXC IP
-        run: |
-          ssh -i ~/.ssh/jump_key -p 2245 \
-              -o StrictHostKeyChecking=yes \
-              gh-jump@${{ secrets.PROXMOX_HOST }} \
-              "echo 'server ${{ needs.provision.outputs.new_ip }}:80;' \
-               | sudo tee /etc/nginx/lxc-upstream.conf \
-               && sudo nginx -t \
-               && sudo systemctl reload nginx"
 
       - name: Destroy old LXC
         if: needs.provision.outputs.old_vmid != ''

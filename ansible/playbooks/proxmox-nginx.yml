@@ -4,7 +4,12 @@
   become: true
 
   tasks:
-    # ── Packages ──────────────────────────────────────────────────────────────
+    - name: Fail if lxc_ip is not defined
+      ansible.builtin.fail:
+        msg: "lxc_ip must be passed as an extra var: -e lxc_ip=10.10.10.X"
+      when: lxc_ip is not defined
+
+
     - name: Install Nginx and Certbot
       ansible.builtin.apt:
         name:

@@ -1,8 +1,4 @@
 ---
-# Network
-lxc_ip: "10.10.10.15"
-proxmox_pub_iface: "eth0"
-
 # App
 app_dir: "/app"
 app_domain: "miles-challenge.athenalabs.work"
@@ -21,3 +17,6 @@ deploy_public_key: "{{ lookup('env', 'LXC_DEPLOY_PUBLIC_KEY') }}"
 # Jump user (Proxmox)
 jump_user: "gh-jump"
 jump_public_key: "{{ lookup('env', 'PROXMOX_JUMP_PUBLIC_KEY') }}"
+
+# Network
+proxmox_pub_iface: "eth0"
