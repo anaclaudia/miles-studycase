@@ -85,14 +85,29 @@ class ProxmoxAPI:
         raise TimeoutError(f"Task {upid} did not complete within {timeout}s")
 
     def find_template_vmid(self):
-        """Resolve template name to VMID."""
+        """Resolve template name to VMID, with fallback to any Ubuntu template."""
         nodes = self.get("/nodes")["data"]
+        all_templates = []
         for node in nodes:
             lxcs = self.get(f"/nodes/{node['node']}/lxc")["data"]
             for lxc in lxcs:
-                if lxc.get("name") == TEMPLATE_NAME and lxc.get("template") == 1:
-                    return lxc["vmid"]
-        raise ValueError(f"Template '{TEMPLATE_NAME}' not found on any node")
+                if lxc.get("template") == 1:
+                    all_templates.append(lxc)
+
+        # Try exact name match first
+        for t in all_templates:
+            if t.get("name") == TEMPLATE_NAME:
+                print(f"Found template '{TEMPLATE_NAME}' — VMID {t['vmid']}")
+                return t["vmid"]
+
+        # List available templates to help with debugging
+        names = [t.get("name", "unnamed") for t in all_templates]
+        print(f"Available templates: {names}", file=sys.stderr)
+        raise ValueError(
+            f"Template '{TEMPLATE_NAME}' not found. "
+            f"Available templates: {names}. "
+            f"Set PROXMOX_TEMPLATE env var to one of these names."
+        )
 
     # ── Public actions ────────────────────────────────────────────────────────
 

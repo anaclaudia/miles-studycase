@@ -20,7 +20,9 @@ import ssl
 PROXMOX_URL      = os.environ["PROXMOX_URL"]
 PROXMOX_NODE     = os.environ.get("PROXMOX_NODE", "pve")
 PROXMOX_USER     = os.environ["PROXMOX_USER"]
-PROXMOX_API_TOKEN= os.environ["PROXMOX_API_TOKEN"]
+PROXMOX_API_TOKEN= os.environ["PROXMOX_API_TOKEN"].strip()
+PROXMOX_USER     = os.environ["PROXMOX_USER"].strip()
+PROXMOX_URL      = os.environ["PROXMOX_URL"].strip()
 PROXMOX_STORAGE  = os.environ.get("PROXMOX_STORAGE", "local")
 TEMPLATE_VMID    = int(os.environ.get("TEMPLATE_VMID", "9000"))
 TEMPLATE_NAME    = os.environ.get("PROXMOX_TEMPLATE", "miles-challenge-base")
