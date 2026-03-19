@@ -80,6 +80,10 @@ jobs:
           DB_PASSWORD=${{ secrets.DB_PASSWORD }}
           EOF
           ssh -T lxc-target << 'ENDSSH'
-            /app/miles-studycase/web_app/venv/bin/pip install --upgrade miles-challenge \
+            /app/miles-studycase/web_app/venv/bin/pip install \
+              --upgrade \
+              --force-reinstall \
+              --no-cache-dir \
+              miles-challenge miles-challenge \
             && sudo systemctl restart miles-challenge
           ENDSSH
