@@ -2,7 +2,7 @@
 """
 Proxmox LXC lifecycle manager.
 Usage:
-  proxmox_lxc.py create  --vmid 200 --ip 10.10.10.200
+  proxmox_lxc.py create  --vmid 200 --ip 10.0.0.200
   proxmox_lxc.py destroy --vmid 100
   proxmox_lxc.py list
 """
@@ -29,7 +29,7 @@ DEPLOY_PUBKEY    = os.environ["LXC_DEPLOY_PUBLIC_KEY"]
 
 ctx = ssl.create_default_context()
 ctx.check_hostname = False
-ctx.verify_mode = ssl.CERT_NONE  # replace with cert verification in production
+ctx.verify_mode = ssl.CERT_NONE
 
 
 class ProxmoxAPI:
@@ -46,7 +46,7 @@ class ProxmoxAPI:
         req  = urllib.request.Request(url, data=data, method=method,
                                       headers=self.headers)
         try:
-            with urllib.request.urlopen(req, context=ctx) as r:
+            with urllib.request.urlopen(req, context=ctx, timeout=30) as r:
                 return json.loads(r.read())
         except urllib.error.HTTPError as e:
             print(f"HTTP {e.code}: {e.read().decode()}", file=sys.stderr)

@@ -31,6 +31,7 @@ BRIDGE            = os.environ.get("PROXMOX_BRIDGE", "vmbr0").strip()
 ctx = ssl.create_default_context()
 ctx.check_hostname = False
 ctx.verify_mode = ssl.CERT_NONE
+print("[debug] SSL verification disabled (insecure mode)")
 
 
 class ProxmoxAPI:
@@ -55,7 +56,7 @@ class ProxmoxAPI:
         req  = urllib.request.Request(url, data=data, method=method,
                                       headers=self.headers)
         try:
-            with urllib.request.urlopen(req, context=ctx) as r:
+            with urllib.request.urlopen(req, context=ctx, timeout=30) as r:
                 return json.loads(r.read())
         except urllib.error.HTTPError as e:
             body = e.read().decode()

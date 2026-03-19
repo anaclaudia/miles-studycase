@@ -121,9 +121,8 @@ jobs:
       - name: Get current (old) LXC VMID
         id: get_old
         run: |
-          RESPONSE=$(curl -s \
-            --insecure \
-            -H "Authorization: PVEAPIToken=${{ secrets.PROXMOX_USER }}=${{ secrets.PROXMOX_API_TOKEN }}" \
+          RESPONSE=$(curl -s --insecure \
+            -H "Authorization: PVEAPIToken=${{ secrets.PROXMOX_USER }}!${{ secrets.PROXMOX_TOKEN_ID }}=${{ secrets.PROXMOX_API_TOKEN }}" \
             "${{ secrets.PROXMOX_URL }}/api2/json/nodes/${{ vars.PROXMOX_NODE }}/lxc")
           echo "Proxmox API response: $RESPONSE"
           OLD=$(echo "$RESPONSE" | python3 -c "
