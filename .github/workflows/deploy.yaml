@@ -108,7 +108,7 @@ jobs:
         id: compute
         run: |
           NEW_VMID=$(( ${{ github.run_number }} + 200 ))
-          NEW_IP="10.0.0.$(( ${{ github.run_number }} % 200 + 50 ))"
+          NEW_IP="10.10.10.$(( ${{ github.run_number }} % 200 + 50 ))"
           echo "new_vmid=$NEW_VMID" >> $GITHUB_OUTPUT
           echo "new_ip=$NEW_IP"     >> $GITHUB_OUTPUT
           echo "New VMID: $NEW_VMID, New IP: $NEW_IP"
@@ -123,12 +123,18 @@ jobs:
       - name: Get current (old) LXC VMID
         id: get_old
         run: |
-          OLD=$(ssh -i ~/.ssh/jump_key -p 2245 \
-            -o StrictHostKeyChecking=yes \
-            gh-jump@${{ secrets.PROXMOX_HOST }} \
-            "cat /etc/miles-challenge-vmid 2>/dev/null || echo ''")
+          OLD=$(curl -sf \
+            -u "${{ secrets.PROXMOX_USER }}:${{ secrets.PROXMOX_PASSWORD }}" \
+            --insecure \
+            "${{ secrets.PROXMOX_URL }}/api2/json/nodes/${{ vars.PROXMOX_NODE }}/lxc" \
+            | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin).get('data', [])
+          hits = [c['vmid'] for c in data if c.get('name','').startswith('miles-challenge-') and not c.get('template')]
+          print(min(hits) if hits else '')
+          " || echo "")
           echo "old_vmid=$OLD" >> $GITHUB_OUTPUT
-          echo "Old VMID: $OLD"
+          echo "Old VMID: ${OLD:-none}"
 
       - name: Create new LXC container
         env:
@@ -254,11 +260,10 @@ jobs:
           ssh -i ~/.ssh/jump_key -p 2245 \
               -o StrictHostKeyChecking=yes \
               gh-jump@${{ secrets.PROXMOX_HOST }} \
-              "sed -i 's|server [0-9.]*:80;|server ${{ needs.provision.outputs.new_ip }}:80;|' \
-               /etc/nginx/sites-available/${{ vars.APP_DOMAIN }} \
-               && nginx -t \
-               && systemctl reload nginx \
-               && echo ${{ needs.provision.outputs.new_vmid }} > /etc/miles-challenge-vmid"
+              "echo 'server ${{ needs.provision.outputs.new_ip }}:80;' \
+               | sudo tee /etc/nginx/lxc-upstream.conf \
+               && sudo nginx -t \
+               && sudo systemctl reload nginx"
 
       - name: Destroy old LXC
         if: needs.provision.outputs.old_vmid != ''

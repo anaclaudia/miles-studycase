@@ -1,5 +1,5 @@
 upstream lxc_app {
-    server {{ lxc_ip }}:5000;
+    include /etc/nginx/lxc-upstream.conf;
     keepalive 32;
 }
 
