@@ -69,17 +69,19 @@ class ProxmoxAPI:
     def delete(self, path):        return self._req("DELETE", path)
 
     def wait_for_task(self, upid, timeout=300):
-        node    = upid.split(":")[1]
-        encoded = upid.replace(":", "%3A").replace("/", "%2F")
-        path    = f"/nodes/{node}/tasks/{encoded}/status"
+        node     = upid.split(":")[1]
+        encoded  = upid.replace(":", "%3A").replace("/", "%2F")
+        path     = f"/nodes/{node}/tasks/{encoded}/status"
         deadline = time.time() + timeout
         while time.time() < deadline:
-            status = self.get(path)["data"]["status"]
+            result     = self.get(path)["data"]
+            status     = result.get("status")
+            exitstatus = result.get("exitstatus", "")
             if status == "stopped":
-                exitstatus = self.get(path)["data"].get("exitstatus", "")
-                if exitstatus != "OK":
-                    raise RuntimeError(f"Task {upid} failed with: {exitstatus}")
-                return
+                print(f"  task finished with exitstatus: {exitstatus!r}")
+                if exitstatus == "OK" or exitstatus.startswith("WARNINGS"):
+                    return
+                raise RuntimeError(f"Task {upid} failed with: {exitstatus}")
             print(f"  waiting for task... ({status})")
             time.sleep(5)
         raise TimeoutError(f"Task {upid} did not complete within {timeout}s")
@@ -134,6 +136,8 @@ class ProxmoxAPI:
             pass  # doesn't exist yet
 
         # Create LXC container
+        net0_val = f"name=eth0,bridge={BRIDGE},ip=dhcp,type=veth"
+        print(f"[debug] net0 = {net0_val}")
         upid = self.post(f"/nodes/{PROXMOX_NODE}/lxc", {
             "vmid":         TEMPLATE_VMID,
             "hostname":     TEMPLATE_NAME,
@@ -141,7 +145,7 @@ class ProxmoxAPI:
             "rootfs":       f"{PROXMOX_STORAGE}:8",
             "memory":       512,
             "cores":        1,
-            "net0":         f"name=eth0,bridge={BRIDGE},ip=dhcp,type=veth",
+            "net0":         net0_val,
             "unprivileged": 1,
             "start":        0,
         })["data"]

@@ -57,14 +57,18 @@ class ProxmoxAPI:
     def delete(self, path):          return self._req("DELETE", path)
 
     def wait_for_task(self, upid, timeout=120):
-        """Poll a Proxmox task UPID until it finishes."""
-        node = upid.split(":")[1]
-        path = f"/nodes/{node}/tasks/{urllib.request.quote(upid, safe='')}/status"
+        node     = upid.split(":")[1]
+        path     = f"/nodes/{node}/tasks/{urllib.request.quote(upid, safe='')}/status"
         deadline = time.time() + timeout
         while time.time() < deadline:
-            status = self.get(path)["data"]["status"]
+            result     = self.get(path)["data"]
+            status     = result.get("status")
+            exitstatus = result.get("exitstatus", "")
             if status == "stopped":
-                return
+                print(f"  task finished with exitstatus: {exitstatus!r}")
+                if exitstatus == "OK" or exitstatus.startswith("WARNINGS"):
+                    return
+                raise RuntimeError(f"Task {upid} failed with: {exitstatus}")
             time.sleep(3)
         raise TimeoutError(f"Task {upid} did not complete within {timeout}s")
 
