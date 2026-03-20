@@ -1,6 +1,6 @@
 ---
 - name: Configure Proxmox jump user and NAT forwarding
-  hosts: proxmox
+  hosts: proxmox_host
   become: true
 
   tasks:
