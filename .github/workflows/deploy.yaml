@@ -188,7 +188,7 @@ jobs:
               proxmox_host:
                 ansible_host: ${PROXMOX_HOST}
                 ansible_port: 2245
-                ansible_user: admin
+                ansible_user: root
                 ansible_ssh_private_key_file: ~/.ssh/jump_key
           EOF
 
@@ -198,7 +198,10 @@ jobs:
             -i /tmp/inventory_proxmox.yml \
             ansible/playbooks/proxmox-nginx.yml \
             -e "@ansible/group_vars/all.yml" \
-            -e "lxc_ip=${{ needs.provision.outputs.new_ip }}"
+            -e "lxc_ip=${{ needs.provision.outputs.new_ip }}" \
+            -e "lxc_port=5000" \
+            --become \
+            --become-method=sudo
 
   # ── 4. Smoke test the new LXC ─────────────────────────────────────────────
   smoke_test:
@@ -218,7 +221,7 @@ jobs:
           ssh -i ~/.ssh/jump_key \
               -p 2245 \
               -o StrictHostKeyChecking=yes \
-              -L 18080:${{ needs.provision.outputs.new_ip }}:80 \
+              -L 18080:${{ needs.provision.outputs.new_ip }}:5000 \
               -N -f \
               gh-jump@${{ secrets.PROXMOX_HOST }}
           sleep 2
