@@ -127,10 +127,10 @@ class ProxmoxAPI:
 
         # Inject deploy SSH public key via pct exec on the Proxmox host
         cmds = [
-            f"pct exec {vmid} -- mkdir -p /root/.ssh",
-            f"pct exec {vmid} -- chmod 700 /root/.ssh",
-            f"pct exec {vmid} -- bash -c 'echo \"{DEPLOY_PUBKEY}\" >> /root/.ssh/authorized_keys'",
-            f"pct exec {vmid} -- chmod 600 /root/.ssh/authorized_keys",
+            f"sudo pct exec {vmid} -- mkdir -p /root/.ssh",
+            f"sudo pct exec {vmid} -- chmod 700 /root/.ssh",
+            f"sudo pct exec {vmid} -- bash -c 'echo \"{DEPLOY_PUBKEY}\" >> /root/.ssh/authorized_keys'",
+            f"sudo pct exec {vmid} -- chmod 600 /root/.ssh/authorized_keys",
         ]
         for cmd in cmds:
             result = subprocess.run(
