@@ -13,6 +13,8 @@ import time
 import urllib.request
 import urllib.error
 import ssl
+import os
+import subprocess
 
 # ── Config from environment ──────────────────────────────────────────────────
 PROXMOX_URL       = os.environ["PROXMOX_URL"].strip()
