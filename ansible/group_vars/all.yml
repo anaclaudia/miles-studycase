@@ -2,8 +2,9 @@
 # App
 app_dir: "/app"
 app_domain: "miles-challenge.athenalabs.work"
-app_service: "webapp"
-certbot_email: "ana@anaclaudia.net.br"
+app_service: "miles-challenge"
+app_port: "5000"
+certbot_email: "admin@athenalabs.work"
 
 # Database
 db_name: "webapp_db"
@@ -20,3 +21,4 @@ jump_public_key: "{{ lookup('env', 'PROXMOX_JUMP_PUBLIC_KEY') }}"
 
 # Network
 proxmox_pub_iface: "eth0"
+# lxc_ip is intentionally omitted — it is dynamic and passed at runtime

@@ -27,6 +27,7 @@ TEMPLATE_VMID     = int(os.environ.get("TEMPLATE_VMID", "9000"))
 TEMPLATE_NAME     = os.environ.get("PROXMOX_TEMPLATE", "miles-challenge-base").strip()
 CT_TEMPLATE       = "ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
 BRIDGE            = os.environ.get("PROXMOX_BRIDGE", "vmbr0").strip()
+DEPLOY_PUBKEY     = os.environ.get("LXC_DEPLOY_PUBLIC_KEY", "").strip()
 
 ctx = ssl.create_default_context()
 ctx.check_hostname = False
@@ -169,7 +170,7 @@ class ProxmoxAPI:
             "DEBIAN_FRONTEND=noninteractive apt-get upgrade -y",
             "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "
             "python3 python3-venv python3-pip nginx certbot python3-certbot-nginx "
-            "postgresql postgresql-contrib acl curl",
+            "postgresql postgresql-contrib acl curl openssh-server",
             "apt-get clean && rm -rf /var/lib/apt/lists/*",
             "mkdir -p /app/venv",
             "python3 -m venv /app/venv",
@@ -178,6 +179,9 @@ class ProxmoxAPI:
             "chown -R www-data:www-data /app",
             "mkdir -p /var/log/gunicorn && chown www-data:www-data /var/log/gunicorn",
             "sed -i 's/#PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config",
+            "mkdir -p /root/.ssh && chmod 700 /root/.ssh",
+            f"echo '{DEPLOY_PUBKEY}' > /root/.ssh/authorized_keys",
+            "chmod 600 /root/.ssh/authorized_keys",
         ]
         for cmd in cmds:
             print(f"    + {cmd[:60]}...")

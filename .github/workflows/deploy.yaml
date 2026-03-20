@@ -120,7 +120,7 @@ jobs:
         run: |
           echo "${{ secrets.LXC_DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          for i in $(seq 1 24); do
+          for i in $(seq 1 60); do
             ssh -o StrictHostKeyChecking=no \
                 -o ConnectTimeout=5 \
                 -i ~/.ssh/deploy_key \

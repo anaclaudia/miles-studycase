@@ -38,15 +38,16 @@ jobs:
 
       - name: Build LXC base template
         env:
-          PROXMOX_URL:        ${{ secrets.PROXMOX_URL }}
-          PROXMOX_NODE:       ${{ vars.PROXMOX_NODE }}
-          PROXMOX_USER:       ${{ secrets.PROXMOX_USER }}
-          PROXMOX_TOKEN_ID:   ${{ secrets.PROXMOX_TOKEN_ID }}
-          PROXMOX_API_TOKEN:  ${{ secrets.PROXMOX_API_TOKEN }}
-          PROXMOX_STORAGE:    ${{ vars.PROXMOX_STORAGE }}
-          PROXMOX_BRIDGE:     ${{ vars.PROXMOX_BRIDGE }}
-          PROXMOX_TEMPLATE:   miles-challenge-base
-          TEMPLATE_VMID:      "9000"
+          PROXMOX_URL:            ${{ secrets.PROXMOX_URL }}
+          PROXMOX_NODE:           ${{ vars.PROXMOX_NODE }}
+          PROXMOX_USER:           ${{ secrets.PROXMOX_USER }}
+          PROXMOX_TOKEN_ID:       ${{ secrets.PROXMOX_TOKEN_ID }}
+          PROXMOX_API_TOKEN:      ${{ secrets.PROXMOX_API_TOKEN }}
+          PROXMOX_STORAGE:        ${{ vars.PROXMOX_STORAGE }}
+          PROXMOX_BRIDGE:         ${{ vars.PROXMOX_BRIDGE }}
+          PROXMOX_TEMPLATE:       miles-challenge-base
+          TEMPLATE_VMID:          "9000"
+          LXC_DEPLOY_PUBLIC_KEY:  ${{ secrets.LXC_DEPLOY_PUBLIC_KEY }}
         run: |
           ARGS=""
           [ "${{ github.event.inputs.force }}" = "true" ] && ARGS="--force"
