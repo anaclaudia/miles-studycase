@@ -6,12 +6,35 @@ all:
           ansible_host: "{{ lookup('env', 'PROXMOX_HOST') }}"
           ansible_user: admin
           ansible_port: 2245
+          ansible_ssh_private_key_file: ~/.ssh/proxmox_admin_key
+          ansible_become: true
+          ansible_become_method: sudo
+          ansible_become_user: root
+
+    lxc:
+      hosts:
+        lxc_new:
+          ansible_host: "{{ lookup('env', 'LXC_IP') }}"
+          ansible_user: root
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          ansible_ssh_common_args: >-
+            -o ProxyCommand="ssh -i ~/.ssh/proxmox_admin_key
+            -p 2245 -W %h:%p
+            -o StrictHostKeyChecking=no
+            admin@{{ lookup('env', 'PROXMOX_HOST') }}"all:
+  children:
+    proxmox:
+      hosts:
+        proxmox_host:
+          ansible_host: "{{ lookup('env', 'PROXMOX_HOST') }}"
+          ansible_user: root
+          ansible_port: 2245
           ansible_ssh_private_key_file: ~/.ssh/id_ed25519
 
     lxc:
       hosts:
         lxc_container:
           ansible_host: "{{ lookup('env', 'LXC_IP') }}"
-          ansible_user: admin
+          ansible_user: root
           ansible_ssh_private_key_file: ~/.ssh/id_ed25519
           ansible_ssh_common_args: "-o ProxyJump=root@{{ lookup('env', 'PROXMOX_HOST') }}"
