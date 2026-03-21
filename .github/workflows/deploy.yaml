@@ -120,12 +120,17 @@ jobs:
         run: |
           echo "${{ secrets.LXC_DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          for i in $(seq 1 60); do
+          echo "${{ secrets.PROXMOX_JUMP_SSH_KEY }}" > ~/.ssh/jump_key
+          chmod 600 ~/.ssh/jump_key
+          ssh-keyscan -p 2245 ${{ secrets.PROXMOX_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+          for i in $(seq 1 24); do
             ssh -o StrictHostKeyChecking=no \
                 -o ConnectTimeout=5 \
+                -o BatchMode=yes \
                 -i ~/.ssh/deploy_key \
-                -J gh-jump@${{ secrets.PROXMOX_HOST }}:2245 \
-                deploy@${{ steps.compute.outputs.new_ip }} echo "ssh ok" && break
+                -o ProxyCommand="ssh -i ~/.ssh/jump_key -p 2245 -W %h:%p -o StrictHostKeyChecking=no -o BatchMode=yes gh-jump@${{ secrets.PROXMOX_HOST }}" \
+                root@${{ steps.compute.outputs.new_ip }} echo "ssh ok" && break
             echo "Attempt $i — retrying in 5s..."
             sleep 5
           done
@@ -177,6 +182,7 @@ jobs:
             -e "db_user=$DB_USER" \
             -e "db_password=$DB_PASSWORD" \
             -e "deploy_public_key=$LXC_DEPLOY_PUBLIC_KEY" \
+            -e "root_password=${{ secrets.ROOT_PASSWORD }}" \
             -e "@ansible/group_vars/all.yml"
 
       - name: Write Proxmox inventory
@@ -218,6 +224,32 @@ jobs:
 
       - name: Hit /healthcheck on new LXC via jump host
         run: |
+          echo "${{ secrets.LXC_DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          # Check app status inside the LXC before testing
+          echo "=== systemd service status ==="
+          ssh -i ~/.ssh/deploy_key \
+              -o StrictHostKeyChecking=no \
+              -o ProxyCommand="ssh -i ~/.ssh/jump_key -p 2245 -W %h:%p -o StrictHostKeyChecking=no gh-jump@${{ secrets.PROXMOX_HOST }}" \
+              root@${{ needs.provision.outputs.new_ip }} \
+              "systemctl status miles-challenge --no-pager || true"
+
+          echo "=== journal logs ==="
+          ssh -i ~/.ssh/deploy_key \
+              -o StrictHostKeyChecking=no \
+              -o ProxyCommand="ssh -i ~/.ssh/jump_key -p 2245 -W %h:%p -o StrictHostKeyChecking=no gh-jump@${{ secrets.PROXMOX_HOST }}" \
+              root@${{ needs.provision.outputs.new_ip }} \
+              "journalctl -u miles-challenge -n 30 --no-pager || true"
+
+          echo "=== listening ports ==="
+          ssh -i ~/.ssh/deploy_key \
+              -o StrictHostKeyChecking=no \
+              -o ProxyCommand="ssh -i ~/.ssh/jump_key -p 2245 -W %h:%p -o StrictHostKeyChecking=no gh-jump@${{ secrets.PROXMOX_HOST }}" \
+              root@${{ needs.provision.outputs.new_ip }} \
+              "ss -tlnp || true"
+
+          # Open tunnel and test
           ssh -i ~/.ssh/jump_key \
               -p 2245 \
               -o StrictHostKeyChecking=yes \
