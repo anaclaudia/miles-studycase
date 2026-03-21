@@ -224,6 +224,8 @@ jobs:
             -e "@ansible/group_vars/all.yml" \
             -e "lxc_ip=${{ needs.provision.outputs.new_ip }}" \
             -e "lxc_port=5000" \
+            -u admin \
+            --private-key ~/.ssh/admin_key \
             --become \
             --become-method=sudo
 

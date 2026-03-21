@@ -1,7 +1,6 @@
 ---
 - name: Configure Nginx reverse proxy and TLS on Proxmox host
   hosts: proxmox_host
-  become: true
 
   tasks:
     - name: Fail if lxc_ip is not defined
