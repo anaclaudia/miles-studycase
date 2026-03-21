@@ -15,7 +15,9 @@ dependencies = [
 ]
 
 [project.scripts]
-miles-challenge-initdb = "app.app:init_db"
+miles-challenge-initdb        = "miles_challenge.app:init_db"
+miles-challenge-service       = "miles_challenge.install:print_service_file"
+miles-challenge-gunicorn-conf = "miles_challenge.install:print_gunicorn_conf"
 
 [tool.setuptools.packages.find]
 where = ["src"]
