@@ -22,13 +22,13 @@ jobs:
       - name: Set up SSH key
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          echo "${{ secrets.PROXMOX_JUMP_SSH_KEY }}" > ~/.ssh/jump_key
-          chmod 600 ~/.ssh/jump_key
+          echo "${{ secrets.PROXMOX_ADMIN_SSH_KEY }}" > ~/.ssh/admin_key
+          chmod 600 ~/.ssh/admin_key
           ssh-keyscan -p 2245 ${{ secrets.PROXMOX_HOST }} >> ~/.ssh/known_hosts
 
       - name: Copy script to Proxmox host
         run: |
-          scp -i ~/.ssh/jump_key \
+          scp -i ~/.ssh/admin_key \
               -P 2245 \
               -o StrictHostKeyChecking=yes \
               scripts/create_lxc_template.py \
@@ -38,7 +38,7 @@ jobs:
         run: |
           ARGS=""
           [ "${{ github.event.inputs.force }}" = "true" ] && ARGS="--force"
-          ssh -i ~/.ssh/jump_key \
+          ssh -i ~/.ssh/admin_key \
               -p 2245 \
               -o StrictHostKeyChecking=yes \
               admin@${{ secrets.PROXMOX_HOST }} \

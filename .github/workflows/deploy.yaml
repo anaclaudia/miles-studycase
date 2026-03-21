@@ -169,8 +169,9 @@ jobs:
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           echo "${{ secrets.PROXMOX_JUMP_SSH_KEY }}" > ~/.ssh/jump_key
+          echo "${{ secrets.PROXMOX_ADMIN_SSH_KEY }}" > ~/.ssh/admin_key
           echo "${{ secrets.LXC_DEPLOY_SSH_KEY }}"   > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/jump_key ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/jump_key ~/.ssh/admin_key ~/.ssh/deploy_key
           ssh-keyscan -p 2245 ${{ secrets.PROXMOX_HOST }} >> ~/.ssh/known_hosts
 
       - name: Write dynamic inventory for new LXC
