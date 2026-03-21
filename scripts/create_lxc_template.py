@@ -160,8 +160,11 @@ class ProxmoxAPI:
         except Exception:
             pass  # doesn't exist yet
 
-        # Create LXC container
-        net0_val = f"name=eth0,bridge={BRIDGE},ip=dhcp,type=veth"
+        # Use a static IP for provisioning so the container has internet access
+        # This IP is temporary — only used during template creation
+        template_ip  = os.environ.get("TEMPLATE_BUILD_IP", "10.10.10.10").strip()
+        template_gw  = os.environ.get("TEMPLATE_BUILD_GW", "10.10.10.1").strip()
+        net0_val = f"name=eth0,bridge={BRIDGE},ip={template_ip}/24,gw={template_gw},type=veth"
         print(f"[debug] net0 = {net0_val}")
         upid = self.post(f"/nodes/{PROXMOX_NODE}/lxc", {
             "vmid":         TEMPLATE_VMID,
