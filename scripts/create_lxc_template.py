@@ -25,7 +25,7 @@ PROXMOX_API_TOKEN = os.environ["PROXMOX_API_TOKEN"].strip()
 PROXMOX_STORAGE   = os.environ.get("PROXMOX_STORAGE", "local").strip()
 TEMPLATE_VMID     = int(os.environ.get("TEMPLATE_VMID", "9000"))
 TEMPLATE_NAME     = os.environ.get("PROXMOX_TEMPLATE", "miles-challenge-base").strip()
-CT_TEMPLATE       = "ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
+CT_TEMPLATE       = None  # resolved dynamically from Proxmox aplinfo
 BRIDGE            = os.environ.get("PROXMOX_BRIDGE", "vmbr0").strip()
 DEPLOY_PUBKEY     = os.environ.get("LXC_DEPLOY_PUBLIC_KEY", "").strip()
 
@@ -99,18 +99,48 @@ class ProxmoxAPI:
         except Exception:
             return False
 
-    def download_ct_template(self):
+    def resolve_ct_template(self):
+        """Find the latest Ubuntu 24.04 CT template available on Proxmox."""
+        print("Resolving latest Ubuntu 24.04 CT template...")
+        data = self.get(f"/nodes/{PROXMOX_NODE}/aplinfo")["data"]
+        candidates = [
+            t["template"] for t in data
+            if "ubuntu-24.04" in t.get("template", "")
+            and "standard" in t.get("template", "")
+        ]
+        if not candidates:
+            raise ValueError(
+                "No Ubuntu 24.04 standard template found in Proxmox aplinfo. "
+                "Check that the template list is up to date: "
+                "pveam update"
+            )
+        # Sort and pick latest (lexicographic sort works for these version strings)
+        latest = sorted(candidates)[-1]
+        print(f"  Resolved CT template: {latest}")
+        return latest
+
+    def download_ct_template(self, ct_template):
         """Download Ubuntu CT template to Proxmox storage if not present."""
-        print(f"Checking for CT template {CT_TEMPLATE}...")
+        print(f"Checking for CT template {ct_template}...")
         content  = self.get(
             f"/nodes/{PROXMOX_NODE}/storage/{PROXMOX_STORAGE}/content"
         )["data"]
-        existing = [c["volid"] for c in content if CT_TEMPLATE in c.get("volid", "")]
+        existing = [c["volid"] for c in content if ct_template in c.get("volid", "")]
         if existing:
             print(f"  CT template already present: {existing[0]}")
-            return
+            return ct_template
 
-        print(f"  Downloading {CT_TEMPLATE} from Proxmox mirrors...")
+        print(f"  Downloading {ct_template} from Proxmox mirrors...")
+        upid = self.post(
+            f"/nodes/{PROXMOX_NODE}/aplinfo",
+            {
+                "storage":  PROXMOX_STORAGE,
+                "template": f"system/{ct_template}",
+            }
+        )["data"]
+        self.wait_for_task(upid)
+        print("  Download complete.")
+        return ct_template Proxmox mirrors...")
         upid = self.post(
             f"/nodes/{PROXMOX_NODE}/aplinfo",
             {

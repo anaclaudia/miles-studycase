@@ -8,13 +8,12 @@ Usage:
 """
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.request
 import urllib.error
 import ssl
-import os
-import subprocess
 
 # ── Config from environment ──────────────────────────────────────────────────
 PROXMOX_URL       = os.environ["PROXMOX_URL"].strip()
@@ -26,7 +25,6 @@ TEMPLATE_NAME     = os.environ.get("PROXMOX_TEMPLATE", "miles-challenge-base").s
 BRIDGE            = os.environ.get("PROXMOX_BRIDGE", "vmbr0").strip()
 STORAGE           = os.environ.get("PROXMOX_STORAGE", "local").strip()
 GW                = os.environ.get("LXC_GATEWAY", "10.10.10.1").strip()
-DEPLOY_PUBKEY     = os.environ["LXC_DEPLOY_PUBLIC_KEY"].strip()
 
 ctx = ssl.create_default_context()
 ctx.check_hostname = False
@@ -123,31 +121,8 @@ class ProxmoxAPI:
         # Start
         upid = self.post(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/status/start", None)["data"]
         self.wait_for_task(upid)
-        time.sleep(5)  # wait for container to fully boot
-
-        # Inject deploy SSH public key via pct exec on the Proxmox host
-        cmds = [
-            f"sudo pct exec {vmid} -- mkdir -p /root/.ssh",
-            f"sudo pct exec {vmid} -- chmod 700 /root/.ssh",
-            f"sudo pct exec {vmid} -- bash -c 'echo \"{DEPLOY_PUBKEY}\" >> /root/.ssh/authorized_keys'",
-            f"sudo pct exec {vmid} -- chmod 600 /root/.ssh/authorized_keys",
-        ]
-        for cmd in cmds:
-            result = subprocess.run(
-                ["ssh", "-i", os.path.expanduser("~/.ssh/jump_key"),
-                 "-p", "2245",
-                 "-o", "StrictHostKeyChecking=no",
-                 f"root@{PROXMOX_URL.split('//')[1].split(':')[0]}",
-                 cmd],
-                capture_output=True, text=True
-            )
-            if result.returncode != 0:
-                print(f"  WARN: {cmd} → {result.stderr.strip()}", file=sys.stderr)
-            else:
-                print(f"  + {cmd}")
-
+        time.sleep(5)
         print(f"LXC {vmid} started at {ip}")
-        return ip
 
     def destroy(self, vmid: int):
         """Stop and destroy an LXC container."""
