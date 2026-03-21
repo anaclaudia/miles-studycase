@@ -3,6 +3,7 @@ name: Build, Publish & Deploy (immutable LXC)
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   # ── 1. Build and publish package to PyPI ──────────────────────────────────
