@@ -116,6 +116,22 @@ jobs:
             --vmid ${{ steps.compute.outputs.new_vmid }} \
             --ip   ${{ steps.compute.outputs.new_ip }}
 
+      - name: Debug SSH key in LXC via Proxmox API
+        run: |
+          RESPONSE=$(curl -s --insecure \
+            -H "Authorization: PVEAPIToken=${{ secrets.PROXMOX_USER }}!${{ secrets.PROXMOX_TOKEN_ID }}=${{ secrets.PROXMOX_API_TOKEN }}" \
+            -X POST \
+            "${{ secrets.PROXMOX_URL }}/api2/json/nodes/${{ vars.PROXMOX_NODE }}/lxc/${{ steps.compute.outputs.new_vmid }}/exec" \
+            -H "Content-Type: application/json" \
+            -d '{"command":["cat","/root/.ssh/authorized_keys"]}')
+          echo "authorized_keys content response: $RESPONSE"
+
+          echo "=== LXC_DEPLOY_SSH_KEY fingerprint ==="
+          echo "${{ secrets.LXC_DEPLOY_SSH_KEY }}" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+          ssh-keygen -lf /tmp/deploy_key
+          rm /tmp/deploy_key
+
       - name: Wait for SSH to become available on new LXC
         run: |
           echo "${{ secrets.LXC_DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
@@ -165,7 +181,7 @@ jobs:
             hosts:
               lxc_new:
                 ansible_host: ${NEW_IP}
-                ansible_user: admin
+                ansible_user: root
                 ansible_ssh_private_key_file: ~/.ssh/deploy_key
                 ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o ProxyCommand='ssh -i ~/.ssh/jump_key -p 2245 -W %h:%p -o StrictHostKeyChecking=no gh-jump@${PROXMOX_HOST}'"
           EOF
@@ -194,7 +210,7 @@ jobs:
               proxmox_host:
                 ansible_host: ${PROXMOX_HOST}
                 ansible_port: 2245
-                ansible_user: admin
+                ansible_user: root
                 ansible_ssh_private_key_file: ~/.ssh/jump_key
           EOF
 

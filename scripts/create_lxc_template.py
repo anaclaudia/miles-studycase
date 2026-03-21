@@ -140,7 +140,7 @@ class ProxmoxAPI:
         )["data"]
         self.wait_for_task(upid)
         print("  Download complete.")
-        return ct_template Proxmox mirrors...")
+        return ct_template
         upid = self.post(
             f"/nodes/{PROXMOX_NODE}/aplinfo",
             {
