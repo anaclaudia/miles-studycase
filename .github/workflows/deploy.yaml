@@ -162,7 +162,7 @@ jobs:
 
       - name: Install Ansible
         run: |
-          pip install ansible
+          pip install ansible passlib
           ansible-galaxy collection install community.postgresql ansible.posix
 
       - name: Set up SSH keys
