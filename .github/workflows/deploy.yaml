@@ -183,7 +183,7 @@ jobs:
             hosts:
               lxc_new:
                 ansible_host: ${NEW_IP}
-                ansible_user: admin
+                ansible_user: root
                 ansible_ssh_private_key_file: ~/.ssh/deploy_key
                 ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o ProxyCommand='ssh -i ~/.ssh/jump_key -p 2245 -W %h:%p -o StrictHostKeyChecking=no gh-jump@${PROXMOX_HOST}'"
           EOF
@@ -197,6 +197,8 @@ jobs:
           ansible-playbook \
             -i /tmp/inventory_new.yml \
             ansible/playbooks/lxc-configure.yml \
+            -u root \
+            --private-key ~/.ssh/deploy_key \
             -e "db_user=$DB_USER" \
             -e "db_password=$DB_PASSWORD" \
             -e "deploy_public_key=$LXC_DEPLOY_PUBLIC_KEY" \
@@ -212,7 +214,7 @@ jobs:
               proxmox_host:
                 ansible_host: ${PROXMOX_HOST}
                 ansible_port: 2245
-                ansible_user: admin
+                ansible_user: root
                 ansible_ssh_private_key_file: ~/.ssh/jump_key
           EOF
 
