@@ -154,10 +154,10 @@ class ProxmoxAPI:
                 self.post(f"/nodes/{PROXMOX_NODE}/lxc/{TEMPLATE_VMID}/status/stop", None)
                 time.sleep(3)
             except Exception:
-                pass
+                pass  # not running, that's fine
             upid = self.delete(f"/nodes/{PROXMOX_NODE}/lxc/{TEMPLATE_VMID}")["data"]
             self.wait_for_task(upid)
-        except urllib.error.HTTPError:
+        except Exception:
             pass  # doesn't exist yet
 
         # Create LXC container
@@ -172,6 +172,7 @@ class ProxmoxAPI:
             "cores":        1,
             "net0":         net0_val,
             "unprivileged": 1,
+            "nameserver":   "8.8.8.8 1.1.1.1",
             "start":        0,
         })["data"]
         self.wait_for_task(upid)
@@ -184,6 +185,26 @@ class ProxmoxAPI:
         )["data"]
         self.wait_for_task(upid)
         time.sleep(8)
+
+        # Verify internet connectivity before provisioning
+        print("  Checking internet connectivity...")
+        for attempt in range(12):
+            result = subprocess.run(
+                ["sudo", "/usr/sbin/pct", "exec", str(TEMPLATE_VMID), "--",
+                 "curl", "-sf", "--max-time", "5", "https://archive.ubuntu.com"],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                print("  Internet connectivity confirmed.")
+                break
+            print(f"  Waiting for network... attempt {attempt + 1}/12")
+            time.sleep(5)
+        else:
+            raise RuntimeError(
+                "Container has no internet access after 60s. "
+                "Check that the Proxmox bridge has NAT/masquerade configured "
+                "and that DHCP is working on the bridge."
+            )
 
         # Provision via pct exec on Proxmox host
         print("  Provisioning packages, venv and SSH key...")
