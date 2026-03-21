@@ -217,7 +217,7 @@ class ProxmoxAPI:
         for cmd in cmds:
             print(f"    + {' '.join(cmd)[:70]}...")
             result = subprocess.run(
-                ["pct", "exec", str(TEMPLATE_VMID), "--"] + cmd,
+                ["sudo", "/usr/sbin/pct", "exec", str(TEMPLATE_VMID), "--"] + cmd,
                 capture_output=True, text=True
             )
             if result.returncode != 0:
