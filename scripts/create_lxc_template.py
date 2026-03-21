@@ -194,7 +194,7 @@ class ProxmoxAPI:
         for attempt in range(12):
             result = subprocess.run(
                 ["sudo", "/usr/sbin/pct", "exec", str(TEMPLATE_VMID), "--",
-                 "curl", "-sf", "--max-time", "5", "https://archive.ubuntu.com"],
+                 "ping", "-c", "1", "-W", "5", "8.8.8.8"],
                 capture_output=True, text=True
             )
             if result.returncode == 0:
@@ -205,8 +205,7 @@ class ProxmoxAPI:
         else:
             raise RuntimeError(
                 "Container has no internet access after 60s. "
-                "Check that the Proxmox bridge has NAT/masquerade configured "
-                "and that DHCP is working on the bridge."
+                "Check that the Proxmox bridge has NAT/masquerade configured."
             )
 
         # Provision via pct exec on Proxmox host
