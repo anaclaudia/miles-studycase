@@ -71,10 +71,22 @@
       ansible.builtin.pip:
         name: miles-challenge
         virtualenv: "{{ app_dir }}/venv"
+        virtualenv_command: python3 -m venv
         state: latest
         extra_args: "--no-cache-dir"
 
     # ── Write configs from package ────────────────────────────────────────────
+    - name: Debug venv contents
+      ansible.builtin.shell:
+        cmd: "ls -la {{ app_dir }}/venv/bin/ && {{ app_dir }}/venv/bin/pip show miles-challenge"
+      changed_when: false
+      register: venv_debug
+      ignore_errors: true
+
+    - name: Show venv debug output
+      ansible.builtin.debug:
+        var: venv_debug.stdout_lines
+
     - name: Write gunicorn config from package
       ansible.builtin.shell:
         cmd: "{{ app_dir }}/venv/bin/miles-challenge-gunicorn-conf > {{ app_dir }}/gunicorn.conf.py"
