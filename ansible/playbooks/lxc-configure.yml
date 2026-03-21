@@ -1,6 +1,6 @@
 ---
 - name: Configure LXC container — app, database, nginx, deploy user
-  hosts: lxc
+  hosts: lxc_new
   become: true
 
   tasks:
