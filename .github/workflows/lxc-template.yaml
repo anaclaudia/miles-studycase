@@ -19,36 +19,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Set up SSH jump key
+      - name: Set up SSH key
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           echo "${{ secrets.PROXMOX_JUMP_SSH_KEY }}" > ~/.ssh/jump_key
           chmod 600 ~/.ssh/jump_key
           ssh-keyscan -p 2245 ${{ secrets.PROXMOX_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Test Proxmox API connectivity
+      - name: Copy script to Proxmox host
         run: |
-          curl -v --insecure \
-            -H "Authorization: PVEAPIToken=${{ secrets.PROXMOX_USER }}!${{ secrets.PROXMOX_TOKEN_ID }}=${{ secrets.PROXMOX_API_TOKEN }}" \
-            "${{ secrets.PROXMOX_URL }}/api2/json/version"
+          scp -i ~/.ssh/jump_key \
+              -P 2245 \
+              -o StrictHostKeyChecking=yes \
+              scripts/create_lxc_template.py \
+              admin@${{ secrets.PROXMOX_HOST }}:/tmp/create_lxc_template.py
 
-      - name: Build LXC base template
-        env:
-          PROXMOX_URL:            ${{ secrets.PROXMOX_URL }}
-          PROXMOX_NODE:           ${{ vars.PROXMOX_NODE }}
-          PROXMOX_USER:           ${{ secrets.PROXMOX_USER }}
-          PROXMOX_TOKEN_ID:       ${{ secrets.PROXMOX_TOKEN_ID }}
-          PROXMOX_API_TOKEN:      ${{ secrets.PROXMOX_API_TOKEN }}
-          PROXMOX_STORAGE:        ${{ vars.PROXMOX_STORAGE }}
-          PROXMOX_BRIDGE:         ${{ vars.PROXMOX_BRIDGE }}
-          PROXMOX_TEMPLATE:       miles-challenge-base
-          TEMPLATE_VMID:          "9000"
-          LXC_DEPLOY_PUBLIC_KEY:  ${{ secrets.LXC_DEPLOY_PUBLIC_KEY }}
+      - name: Run template builder on Proxmox host
         run: |
           ARGS=""
           [ "${{ github.event.inputs.force }}" = "true" ] && ARGS="--force"
-          python3 scripts/create_lxc_template.py $ARGS
+          ssh -i ~/.ssh/jump_key \
+              -p 2245 \
+              -o StrictHostKeyChecking=yes \
+              admin@${{ secrets.PROXMOX_HOST }} \
+              "PROXMOX_URL=${{ secrets.PROXMOX_URL }} \
+               PROXMOX_NODE=${{ vars.PROXMOX_NODE }} \
+               PROXMOX_USER=${{ secrets.PROXMOX_USER }} \
+               PROXMOX_TOKEN_ID=${{ secrets.PROXMOX_TOKEN_ID }} \
+               PROXMOX_API_TOKEN=${{ secrets.PROXMOX_API_TOKEN }} \
+               PROXMOX_STORAGE=${{ vars.PROXMOX_STORAGE }} \
+               PROXMOX_BRIDGE=${{ vars.PROXMOX_BRIDGE }} \
+               PROXMOX_TEMPLATE=miles-challenge-base \
+               TEMPLATE_VMID=9000 \
+               LXC_DEPLOY_PUBLIC_KEY='${{ secrets.LXC_DEPLOY_PUBLIC_KEY }}' \
+               python3 /tmp/create_lxc_template.py $ARGS"

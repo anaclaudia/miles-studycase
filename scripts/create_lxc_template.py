@@ -1,22 +1,27 @@
 #!/usr/bin/env python3
 """
 Creates a base LXC template on Proxmox by:
-  1. Downloading the Ubuntu 24.04 CT template (if not present)
-  2. Creating an LXC container from it
-  3. Provisioning it (packages, venv, hardening)
-  4. Converting it to a template
+  1. Resolving the latest Ubuntu 24.04 CT template available on Proxmox
+  2. Downloading it if not already present
+  3. Creating an LXC container from it
+  4. Provisioning it (packages, venv, SSH key, hardening)
+  5. Converting it to a template
 
 Run once manually or via the packer.yml workflow.
+Usage:
+  python3 create_lxc_template.py           # skip if template exists
+  python3 create_lxc_template.py --force   # rebuild even if template exists
 """
+import json
 import os
 import sys
 import time
-import json
 import subprocess
 import urllib.request
 import urllib.error
 import ssl
 
+# ── Config from environment ──────────────────────────────────────────────────
 PROXMOX_URL       = os.environ["PROXMOX_URL"].strip()
 PROXMOX_NODE      = os.environ.get("PROXMOX_NODE", "pve").strip()
 PROXMOX_USER      = os.environ["PROXMOX_USER"].strip()
@@ -25,7 +30,6 @@ PROXMOX_API_TOKEN = os.environ["PROXMOX_API_TOKEN"].strip()
 PROXMOX_STORAGE   = os.environ.get("PROXMOX_STORAGE", "local").strip()
 TEMPLATE_VMID     = int(os.environ.get("TEMPLATE_VMID", "9000"))
 TEMPLATE_NAME     = os.environ.get("PROXMOX_TEMPLATE", "miles-challenge-base").strip()
-CT_TEMPLATE       = None  # resolved dynamically from Proxmox aplinfo
 BRIDGE            = os.environ.get("PROXMOX_BRIDGE", "vmbr0").strip()
 DEPLOY_PUBKEY     = os.environ.get("LXC_DEPLOY_PUBLIC_KEY", "").strip()
 
@@ -45,7 +49,6 @@ class ProxmoxAPI:
         print(f"[debug] PROXMOX_TOKEN_ID = {PROXMOX_TOKEN_ID!r}")
         print(f"[debug] PROXMOX_NODE     = {PROXMOX_NODE!r}")
         print(f"[debug] API_TOKEN        = {masked}")
-        print(f"[debug] Auth header      = PVEAPIToken={PROXMOX_USER}!{PROXMOX_TOKEN_ID}=<uuid>")
         self.headers = {
             "Authorization": auth,
             "Content-Type":  "application/json",
@@ -69,6 +72,7 @@ class ProxmoxAPI:
 
     def get(self, path):           return self._req("GET",    path)
     def post(self, path, payload): return self._req("POST",   path, payload)
+    def put(self, path, payload):  return self._req("PUT",    path, payload)
     def delete(self, path):        return self._req("DELETE", path)
 
     def wait_for_task(self, upid, timeout=300):
@@ -111,10 +115,8 @@ class ProxmoxAPI:
         if not candidates:
             raise ValueError(
                 "No Ubuntu 24.04 standard template found in Proxmox aplinfo. "
-                "Check that the template list is up to date: "
-                "pveam update"
+                "Run 'pveam update' on the Proxmox host first."
             )
-        # Sort and pick latest (lexicographic sort works for these version strings)
         latest = sorted(candidates)[-1]
         print(f"  Resolved CT template: {latest}")
         return latest
@@ -128,7 +130,7 @@ class ProxmoxAPI:
         existing = [c["volid"] for c in content if ct_template in c.get("volid", "")]
         if existing:
             print(f"  CT template already present: {existing[0]}")
-            return ct_template
+            return
 
         print(f"  Downloading {ct_template} from Proxmox mirrors...")
         upid = self.post(
@@ -140,18 +142,8 @@ class ProxmoxAPI:
         )["data"]
         self.wait_for_task(upid)
         print("  Download complete.")
-        return ct_template
-        upid = self.post(
-            f"/nodes/{PROXMOX_NODE}/aplinfo",
-            {
-                "storage":  PROXMOX_STORAGE,
-                "template": f"system/{CT_TEMPLATE}",
-            }
-        )["data"]
-        self.wait_for_task(upid)
-        print("  Download complete.")
 
-    def create_base_template(self):
+    def create_base_template(self, ct_template):
         print(f"Creating base LXC container (VMID {TEMPLATE_VMID})...")
 
         # Delete existing container with same VMID if present
@@ -159,7 +151,7 @@ class ProxmoxAPI:
             self.get(f"/nodes/{PROXMOX_NODE}/lxc/{TEMPLATE_VMID}/status/current")
             print(f"  VMID {TEMPLATE_VMID} exists — removing it first")
             try:
-                self.post(f"/nodes/{PROXMOX_NODE}/lxc/{TEMPLATE_VMID}/status/stop", {})
+                self.post(f"/nodes/{PROXMOX_NODE}/lxc/{TEMPLATE_VMID}/status/stop", None)
                 time.sleep(3)
             except Exception:
                 pass
@@ -174,7 +166,7 @@ class ProxmoxAPI:
         upid = self.post(f"/nodes/{PROXMOX_NODE}/lxc", {
             "vmid":         TEMPLATE_VMID,
             "hostname":     TEMPLATE_NAME,
-            "ostemplate":   f"{PROXMOX_STORAGE}:vztmpl/{CT_TEMPLATE}",
+            "ostemplate":   f"{PROXMOX_STORAGE}:vztmpl/{ct_template}",
             "rootfs":       f"{PROXMOX_STORAGE}:8",
             "memory":       512,
             "cores":        1,
@@ -185,43 +177,51 @@ class ProxmoxAPI:
         self.wait_for_task(upid)
         print("  Container created.")
 
-        # Start it for provisioning
+        # Start for provisioning
         print("  Starting container for provisioning...")
         upid = self.post(
             f"/nodes/{PROXMOX_NODE}/lxc/{TEMPLATE_VMID}/status/start", None
         )["data"]
         self.wait_for_task(upid)
-        time.sleep(5)
+        time.sleep(8)
 
-        # Provision via pct exec
-        print("  Provisioning packages and virtualenv...")
+        # Provision via pct exec on Proxmox host
+        print("  Provisioning packages, venv and SSH key...")
         cmds = [
-            "apt-get update -qq",
-            "DEBIAN_FRONTEND=noninteractive apt-get upgrade -y",
-            "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "
-            "python3 python3-venv python3-pip nginx certbot python3-certbot-nginx "
-            "postgresql postgresql-contrib acl curl openssh-server",
-            "apt-get clean && rm -rf /var/lib/apt/lists/*",
-            "mkdir -p /app/venv",
-            "python3 -m venv /app/venv",
-            "/app/venv/bin/pip install --upgrade pip",
-            "/app/venv/bin/pip install flask gunicorn psycopg2-binary python-dotenv",
-            "chown -R www-data:www-data /app",
-            "mkdir -p /var/log/gunicorn && chown www-data:www-data /var/log/gunicorn",
-            "sed -i 's/#PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config",
-            "mkdir -p /root/.ssh && chmod 700 /root/.ssh",
-            f"echo '{DEPLOY_PUBKEY}' > /root/.ssh/authorized_keys",
-            "chmod 600 /root/.ssh/authorized_keys",
+            ["apt-get", "update", "-qq"],
+            ["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "upgrade", "-y"],
+            ["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y",
+             "--no-install-recommends",
+             "python3", "python3-venv", "python3-pip", "nginx", "certbot",
+             "python3-certbot-nginx", "postgresql", "postgresql-contrib",
+             "acl", "curl", "openssh-server"],
+            ["apt-get", "clean"],
+            ["bash", "-c", "rm -rf /var/lib/apt/lists/*"],
+            ["mkdir", "-p", "/app/venv"],
+            ["python3", "-m", "venv", "/app/venv"],
+            ["/app/venv/bin/pip", "install", "--upgrade", "pip"],
+            ["/app/venv/bin/pip", "install",
+             "flask", "gunicorn", "psycopg2-binary", "python-dotenv"],
+            ["bash", "-c", "chown -R www-data:www-data /app"],
+            ["mkdir", "-p", "/var/log/gunicorn"],
+            ["bash", "-c", "chown www-data:www-data /var/log/gunicorn"],
+            ["bash", "-c",
+             "sed -i 's/#PasswordAuthentication.*/PasswordAuthentication no/' "
+             "/etc/ssh/sshd_config"],
+            ["mkdir", "-p", "/root/.ssh"],
+            ["chmod", "700", "/root/.ssh"],
+            ["bash", "-c", f"echo '{DEPLOY_PUBKEY}' > /root/.ssh/authorized_keys"],
+            ["chmod", "600", "/root/.ssh/authorized_keys"],
         ]
+
         for cmd in cmds:
-            print(f"    + {cmd[:60]}...")
+            print(f"    + {' '.join(cmd)[:70]}...")
             result = subprocess.run(
-                ["ssh", "-o", "StrictHostKeyChecking=no",
-                 f"root@{PROXMOX_NODE}", f"pct exec {TEMPLATE_VMID} -- bash -c '{cmd}'"],
+                ["pct", "exec", str(TEMPLATE_VMID), "--"] + cmd,
                 capture_output=True, text=True
             )
             if result.returncode != 0:
-                print(f"    WARN: {result.stderr.strip()}")
+                print(f"    WARN: {result.stderr.strip()}", file=sys.stderr)
 
         # Stop and convert to template
         print("  Stopping container...")
@@ -232,14 +232,18 @@ class ProxmoxAPI:
 
         print("  Converting to template...")
         self.post(f"/nodes/{PROXMOX_NODE}/lxc/{TEMPLATE_VMID}/template", None)
+        print(f"✅ Template '{TEMPLATE_NAME}' (VMID {TEMPLATE_VMID}) ready.")
 
 
 if __name__ == "__main__":
     api = ProxmoxAPI()
     if api.template_exists():
         print(f"Template '{TEMPLATE_NAME}' already exists — nothing to do.")
-        print("Pass --force to rebuild it.")
         if "--force" not in sys.argv:
+            print("Pass --force to rebuild it.")
             sys.exit(0)
-    api.download_ct_template()
-    api.create_base_template()
+        print("--force passed, rebuilding...")
+
+    ct_template = api.resolve_ct_template()
+    api.download_ct_template(ct_template)
+    api.create_base_template(ct_template)
