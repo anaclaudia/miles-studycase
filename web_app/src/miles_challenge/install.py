@@ -1,9 +1,9 @@
 import importlib.metadata
 import sys
 
-APP_DIR   = "/app"
-VENV_DIR  = f"{APP_DIR}/venv"
-SERVICE   = "miles-challenge"
+APP_DIR  = "/app"
+VENV_DIR = f"{APP_DIR}/venv"
+SERVICE  = "miles-challenge"
 
 
 def _version():
@@ -33,7 +33,7 @@ RestartSec=5s
 WantedBy=multi-user.target
 """
 
-GUNICORN_CONF = f"""\
+GUNICORN_CONF = """\
 bind        = "0.0.0.0:5000"
 workers     = 2
 accesslog   = "/var/log/gunicorn/access.log"
