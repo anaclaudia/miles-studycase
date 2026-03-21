@@ -231,6 +231,19 @@ jobs:
               -o BatchMode=yes \
               admin@${{ secrets.PROXMOX_HOST }} echo "ssh ok" || echo "SSH FAILED"
 
+      - name: Debug Proxmox inventory
+        run: |
+          echo "=== inventory content ==="
+          cat /tmp/inventory_proxmox.yml
+          echo "=== admin key fingerprint ==="
+          ssh-keygen -lf ~/.ssh/admin_key
+          echo "=== test direct SSH as admin ==="
+          ssh -i ~/.ssh/admin_key \
+              -p 2245 \
+              -o StrictHostKeyChecking=no \
+              -o BatchMode=yes \
+              admin@${{ secrets.PROXMOX_HOST }} echo "ssh ok" || echo "SSH FAILED"
+
       - name: Run Ansible proxmox-nginx playbook
         run: |
           ansible-playbook \
@@ -242,7 +255,8 @@ jobs:
             -u admin \
             --private-key ~/.ssh/admin_key \
             --become \
-            --become-method=sudo
+            --become-method=sudo \
+            --become-user=root
 
   # ── 4. Smoke test the new LXC ─────────────────────────────────────────────
   smoke_test:
