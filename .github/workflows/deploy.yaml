@@ -215,14 +215,10 @@ jobs:
           all:
             hosts:
               proxmox_host:
-                ansible_user: admin
-                ansible_ssh_private_key_file: ~/.ssh/admin_key
-                ansible_become: true
-                ansible_become_method: sudo
-                ansible_become_user: root
                 ansible_host: ${PROXMOX_HOST}
                 ansible_port: 2245
-                ansible_host: ${PROXMOX_HOST}
+                ansible_user: root
+                ansible_ssh_private_key_file: ~/.ssh/jump_key
           EOF
 
       - name: Debug Proxmox inventory
@@ -331,8 +327,42 @@ jobs:
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           echo "${{ secrets.PROXMOX_JUMP_SSH_KEY }}" > ~/.ssh/jump_key
-          chmod 600 ~/.ssh/jump_key
+          echo "${{ secrets.PROXMOX_ADMIN_SSH_KEY }}" > ~/.ssh/admin_key
+          chmod 600 ~/.ssh/jump_key ~/.ssh/admin_key
           ssh-keyscan -p 2245 ${{ secrets.PROXMOX_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Write Proxmox inventory
+        run: |
+          python3 -c "
+          host = '${{ secrets.PROXMOX_HOST }}'
+          content = f'''all:
+            hosts:
+              proxmox_host:
+                ansible_host: {host}
+                ansible_port: 2245
+                ansible_user: admin
+                ansible_ssh_private_key_file: ~/.ssh/admin_key
+                ansible_become: true
+                ansible_become_method: sudo
+                ansible_become_user: root
+          '''
+          open('/tmp/inventory_proxmox.yml', 'w').write(content)
+          print(content)
+          "
+
+      - name: Update Nginx upstream to new LXC
+        run: |
+          ansible-playbook \
+            -i /tmp/inventory_proxmox.yml \
+            ansible/playbooks/proxmox-nginx.yml \
+            -e "@ansible/group_vars/all.yml" \
+            -e "lxc_ip=${{ needs.provision.outputs.new_ip }}" \
+            -e "lxc_port=5000" \
+            -u admin \
+            --private-key ~/.ssh/admin_key \
+            --become \
+            --become-method=sudo \
+            --become-user=root
 
       - name: Destroy old LXC
         if: needs.provision.outputs.old_vmid != ''
