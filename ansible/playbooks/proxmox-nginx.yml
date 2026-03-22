@@ -1,6 +1,7 @@
 ---
 - name: Configure Nginx reverse proxy and TLS on Proxmox host
   hosts: proxmox_host
+  become: true
 
   tasks:
     - name: Fail if lxc_ip is not defined
@@ -8,7 +9,11 @@
         msg: "lxc_ip must be passed as an extra var: -e lxc_ip=10.10.10.X"
       when: lxc_ip is not defined
 
+    - name: Debug lxc_ip value
+      ansible.builtin.debug:
+        msg: "Configuring upstream to {{ lxc_ip }}:{{ lxc_port | default('5000') }}"
 
+    # ── Packages ──────────────────────────────────────────────────────────────
     - name: Install Nginx and Certbot
       ansible.builtin.apt:
         name:
@@ -61,7 +66,7 @@
           -m {{ certbot_email }}
         creates: "/etc/letsencrypt/live/{{ app_domain }}/fullchain.pem"
 
-    # ── Full HTTPS vhost (replaces the HTTP-only config post-certbot) ─────────
+    # ── Full HTTPS vhost ──────────────────────────────────────────────────────
     - name: Deploy full HTTPS Nginx config
       ansible.builtin.template:
         src: templates/proxmox-nginx-https.j2
@@ -70,6 +75,29 @@
         group: root
         mode: "0644"
       notify: Reload nginx
+
+    # ── THIS IS THE SWAP ──────────────────────────────────────────────────────
+    # Updates /etc/nginx/lxc-upstream.conf with the new LXC IP:port.
+    # The Nginx upstream block includes this file, so reloading Nginx
+    # immediately shifts all traffic to the new container.
+    - name: Update lxc-upstream.conf → point traffic to new LXC
+      ansible.builtin.copy:
+        dest: /etc/nginx/lxc-upstream.conf
+        content: "server {{ lxc_ip }}:{{ lxc_port | default('5000') }};\n"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload nginx   # ← triggers the handler below
+
+    - name: Show lxc-upstream.conf content
+      ansible.builtin.command:
+        cmd: cat /etc/nginx/lxc-upstream.conf
+      register: upstream_content
+      changed_when: false
+
+    - name: Debug upstream content
+      ansible.builtin.debug:
+        msg: "lxc-upstream.conf: {{ upstream_content.stdout }}"
 
     # ── Certbot auto-renewal ──────────────────────────────────────────────────
     - name: Ensure Certbot renewal timer is enabled
@@ -89,7 +117,10 @@
         mode: "0755"
 
   handlers:
+    # ── THIS IS THE RELOAD ────────────────────────────────────────────────────
+    # Triggered by the notify on the upstream update task above.
+    # Reloads Nginx config without dropping connections — zero downtime swap.
     - name: Reload nginx
       ansible.builtin.service:
         name: nginx
-        state: reloaded
+        state: reloaded   # ← reloaded not restarted — zero downtime
