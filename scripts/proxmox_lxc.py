@@ -126,6 +126,15 @@ class ProxmoxAPI:
 
     def destroy(self, vmid: int):
         """Stop and destroy an LXC container."""
+        # Check if container exists first
+        try:
+            self.get(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/status/current")
+        except urllib.error.HTTPError as e:
+            if e.code == 500:
+                print(f"LXC {vmid} does not exist — nothing to destroy")
+                return
+            raise
+
         print(f"Stopping LXC {vmid}")
         try:
             upid = self.post(f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/status/stop", None)["data"]
