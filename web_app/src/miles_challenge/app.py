@@ -19,8 +19,8 @@ DB_CONFIG = {
 }
 
 USERNAMES = [
-    "Alice", "Pedro", "Charlie", "Diana", "Eve", "Jenny", "Marcia",
-    "Frank", "Grace", "Hank", "Ivy", "Jack", "Clarisse", "Richard",
+    "Alice", "Pedro", "Charlie", "Diana", "Eve", "Jenny", "Marcia","Ana",
+    "Frank", "Grace", "Hank", "Ivy", "Jack", "Clarisse", "Richard", "Yan",
 ]
 
 def get_conn():
