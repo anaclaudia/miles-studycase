@@ -19,7 +19,7 @@ DB_CONFIG = {
 }
 
 USERNAMES = [
-    "Alice", "Pedro", "Charlie", "Diana", "Eve", "Jenny", "Marcia","Ana",
+    "Alice", "Pedro", "Charlie", "Diana", "Eve", "Jenny", "Marcia", "Ana",
     "Frank", "Grace", "Hank", "Ivy", "Jack", "Clarisse", "Richard", "Yan",
 ]
 
